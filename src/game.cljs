@@ -11,6 +11,12 @@
 (def canvas-h
   700)
 
+(def cell-size
+  70)
+
+(def sprite-size
+  100)
+
 (def pixel-ratio
   (or (.-devicePixelRatio js/window) 1))
 
@@ -55,10 +61,10 @@
                        nbs    (->> (neighbours x y size size)
                                 (map (fn [[x y]] (get game (str x "," y)))))
                        cnt    (->> nbs (filter :mine) (count))]
-                   (assoc game key (assoc value
+                   (update game key assoc
                      :label     (or label (str cnt))
                      :solved    (every? :open nbs)
-                     :reachable (some #(and (:open %) (not (:mine %))) nbs)))))
+                     :reachable (some #(and (:open %) (not (:mine %)) (not= "q" (:label %))) nbs))))
                game
                game)]
     game))
@@ -67,47 +73,18 @@
   (atom
     (parse-puzzle
       #_"OffqooOqqffqfooqOqOffofoqofqoOOffffOffqfqooofoOoOofqffoqfffffOfq"
-      "OffooOfOqffOqfoqqOOqfOfOqqofOqfoffqoooofQqofofoffqfooqfqfffffoff")))
+      "OffooOfOqffOqfoqqOOqfOfOqqofOqfoffqoooofQqofofoffqfooqfqfffffoff"
+      #_"OffOfofqofqqfQfOOqoOoqOfofOfoffffffqoqoqOfOfffqooqOOfqfOfOfQfoqf")))
 
 (def *images
   (atom {}))
 
-(defn load-image [name]
-  (or
-    (get @*images name)
-    (let [img (js/Image.)]
-      (set! (.-src img) (str "i/" name))
-      (swap! *images assoc name img)
-      img)))
-
-(defn render [game]
-  (let [ctx (.getContext canvas "2d")
-        game-w 8
-        game-h 8
-        grid-x (/ (- canvas-w (* 70 game-w)) 2)
-        grid-y (/ (- canvas-h (* 70 game-h)) 2)]
+(defn render [f & args]
+  (let [ctx (.getContext canvas "2d")]
     (.save ctx)
     (.scale ctx pixel-ratio pixel-ratio)
-
     (.clearRect ctx 0 0 canvas-w canvas-h)
-
-    ;; Render cells
-    (doseq [y (range game-w)
-            x (range game-h)]
-        (let [key (str x "," y)
-              cell (get game key)
-              {:keys [mine open label solved reachable]} cell
-              _ (println x y mine open label solved)
-              img-name (cond
-                         (and mine open)                  "flag.png"
-                         (and (not open) (not reachable)) "closed_unreachable.png"
-                         (not open)                       "closed.png"
-                         (and open solved)                (str label "_solved.png")
-                         :else                            (str label ".png"))
-              img (load-image img-name)
-              px (+ grid-x (* x 70))
-              py (+ grid-y (* y 70))]
-          (.drawImage ctx img (- px 15) (- py 15) 100 100)))
+    (apply f ctx args)
 
     ;; viewport size
     (set! (.-font ctx) "12px sans-serif")
@@ -115,6 +92,53 @@
     (.fillText ctx (str (.-innerWidth js/window) "×" (.-innerHeight js/window)) 0 10)
 
     (.restore ctx)))
+
+(defn render-loading [ctx]
+  (set! (.-font ctx) "24px sans-serif")
+  (set! (.-fillStyle ctx) "#000")
+  (set! (.-textAlign ctx) "center")
+  (set! (.-textBaseline ctx) "middle")
+  (.fillText ctx "Loading resources..." (/ canvas-w 2) (/ canvas-h 2)))
+
+(defn preload-images [on-complete]
+  (let [names    (concat
+                   (for [i (range 9)]
+                     (str i ".png"))
+                   (for [i (range 9)]
+                     (str i "_solved.png"))
+                   ["q.png" "q_solved.png" "closed.png" "closed_unreachable.png" "flag.png"])
+        *to-load (atom (count names))]
+    (doseq [name names
+            :let [img (js/Image.)]]
+      (set! (.-onload img)
+        (fn []
+          (swap! *images assoc name img)
+          (when (= 0 (swap! *to-load dec))
+            (on-complete))))
+      (set! (.-src img) (str "i/" name)))))
+
+(defn render-game [ctx game]
+  (let [game-w (js/Math.sqrt (count game))
+        game-h game-w
+        grid-x (/ (- canvas-w (* cell-size game-w)) 2)
+        grid-y (/ (- canvas-h (* cell-size game-h)) 2)]
+    ;; Render cells
+    (doseq [y (range game-w)
+            x (range game-h)]
+      (let [key (str x "," y)
+            cell (get game key)
+            {:keys [mine open label solved reachable]} cell
+            img-name (cond
+                       (and mine open)                  "flag.png"
+                       (and (not open) (not reachable)) "closed_unreachable.png"
+                       (not open)                       "closed.png"
+                       (and open solved)                (str label "_solved.png")
+                       :else                            (str label ".png"))
+            img (get @*images img-name)
+            margin (- (/ (- sprite-size cell-size) 2))
+            px (+ (* x cell-size) grid-x margin)
+            py (+ (* y cell-size) grid-y margin)]
+        (.drawImage ctx img px py sprite-size sprite-size)))))
 
 (defn on-load [_e]
   ;; Prevent all scrolling and rubber band effect
@@ -142,7 +166,10 @@
   (set! (.-width canvas) (* canvas-w pixel-ratio))
   (set! (.-height canvas) (* canvas-h pixel-ratio))
 
-  (render @*game)
-  (js/setTimeout #(render @*game) 100))
+  ;; Draw loading screen
+  (render render-loading)
+
+  ;; Preload all images, then render the game
+  (preload-images #(render render-game @*game)))
 
 (.addEventListener js/window "load" on-load)
