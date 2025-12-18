@@ -1,0 +1,21 @@
+{
+  "name": "sapper",
+  "version": "0.1.0",
+  "description": "",
+  "main": "public/game.mjs",
+  "scripts": {
+    "watch": "pnpm dlx squint-cljs watch",
+    "serve": "pnpm dlx http-server public -p 8000 -c-1",
+    "dev": "concurrently \"pnpm watch\" \"pnpm serve\""
+  },
+  "keywords": [],
+  "author": "Nikita Prokopov",
+  "license": "MIT",
+  "packageManager": "pnpm@10.26.0",
+  "dependencies": {
+    "squint-cljs": "^0.9.182"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
