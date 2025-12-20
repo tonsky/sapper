@@ -270,12 +270,12 @@
   ;; Render
   (preload-images)
   (load-game
-    (rand-nth puzzles/eights)
+    #_(rand-nth puzzles/eights)
     #_"OffqqoofffqoooqfoOfOffOfo"
     #_"ffoqfffOfooqQfoOoqOOqOqffffOfoqoffqO"
     #_"qffqfOfffoqoffOOfOoqOfooofqffffofOqOfofoOfqfqqooo"
     #_"fOfffOffffofqffqffoqoqoofoooOofooofofOOoqfofqfoqq"
-    #_"OffqooOqqffqfooqOqOffofoqofqoOOffffOffqfqooofoOoOofqffoqfffffOfq"
+    "OffqooOqqffqfooqOqOffofoqofqoOOffffOffqfqooofoOoOofqffoqfffffOfq"
     #_"OffooOfOqffOqfoqqOOqfOfOqqofOqfoffqoooofQqofofoffqfooqfqfffffoff"
     #_"OffOfofqofqqfQfOOqoOoqOfofOfoffffffqoqoqOfOfffqooqOOfqfOfOfQfoqf")
 
