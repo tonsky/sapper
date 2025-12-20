@@ -1,10 +1,11 @@
 (ns game
   (:require
-   [clojure.string :as str]))
+   [clojure.string :as str]
+   [puzzles :as puzzles]))
 
 (def canvas nil)
-(def canvas-w 1000)
-(def canvas-h 700)
+(def canvas-w 700)
+(def canvas-h 1000)
 (def cell-size 70)
 (def sprite-size 100)
 (def margin (-> sprite-size (- cell-size) (/ 2)))
@@ -16,6 +17,10 @@
 (def grid-y 0)
 (def grid-w 0)
 (def grid-h 0)
+(def *images (atom {}))
+(def *screen (atom :loading))
+
+(declare render)
 
 (defn neighbours [x y]
   (concat
@@ -53,6 +58,13 @@
     (<= t y)
     (< y (+ t h))))
 
+(defn measure [name f & args]
+  (let [start  (js/performance.now)
+        result (apply f args)
+        end    (js/performance.now)]
+    (println name (- end start) "ms")
+    result))
+
 (defn update-reachability [field]
   (reduce-kv
     (fn [field key value]
@@ -67,51 +79,43 @@
     field))
 
 (defn load-game [s]
-  (set! field-w (js/Math.sqrt (count s)))
-  (set! field-h (js/Math.sqrt (count s)))
-  (set! grid-w (* field-w cell-size))
-  (set! grid-h (* field-h cell-size))
-  (set! grid-x (-> canvas-w (- grid-w) (quot 2)))
-  (set! grid-y (-> canvas-h (- grid-h) (quot 2)))
-  (reset! *field
-    (into {}
-      (for [i (range (count s))
-            :let [x  (mod i field-w)
-                  y  (quot i field-w)
-                  ch (nth s i)]]
-        [(key x y)
-         (case ch
-           "f" {:mine true,  :open false}
-           "o" {:mine false, :open false}
-           "O" {:mine false, :open true}
-           "q" {:mine false, :open false, :label "q"}
-           "Q" {:mine false, :open true,  :label "q"})])))
-  (swap! *field
-    (fn [field]
-      (reduce-kv
-        (fn [field key value]
-          (let [[x y] (parse-key key)
-                {:keys [mine open label]} value
-                nbs   (->> (neighbours x y)
-                        (map (fn [[x y]] (cell field x y))))
-                cnt   (->> nbs (filter :mine) (count))]
-            (update field key assoc
-              :label (or label (str cnt)))))
-        field
-        field)))
-  (swap! *field update-reachability))
+  (measure "load-game"
+    (fn [s]
+      (set! field-w (js/Math.sqrt (count s)))
+      (set! field-h (js/Math.sqrt (count s)))
+      (set! grid-w (* field-w cell-size))
+      (set! grid-h (* field-h cell-size))
+      (set! grid-x (-> canvas-w (- grid-w) (quot 2)))
+      (set! grid-y (-> canvas-h (- grid-h) (- 230)))
+      (reset! *field
+        (into {}
+          (for [i (range (count s))
+                :let [x  (mod i field-w)
+                      y  (quot i field-w)
+                      ch (nth s i)]]
+            [(key x y)
+             (case ch
+               "f" {:mine true,  :open false}
+               "o" {:mine false, :open false}
+               "O" {:mine false, :open true}
+               "q" {:mine false, :open false, :label "q"}
+               "Q" {:mine false, :open true,  :label "q"})])))
+      (swap! *field
+        (fn [field]
+          (reduce-kv
+            (fn [field key value]
+              (let [[x y] (parse-key key)
+                    {:keys [mine open label]} value
+                    nbs   (->> (neighbours x y)
+                            (map (fn [[x y]] (cell field x y))))
+                    cnt   (->> nbs (filter :mine) (count))]
+                (update field key assoc
+                  :label (or label (str cnt)))))
+            field
+            field)))
+      (swap! *field update-reachability)) s))
 
-(def *images
-  (atom {}))
-
-(def *mode
-  (atom :open))
-
-(def mode-buttons
-  {:flag {:top 60}
-   :open {:top 145}})
-
-(defn render [f & args]
+(defn with-context [f & args]
   (let [ctx (.getContext canvas "2d")]
     (.save ctx)
     (.scale ctx pixel-ratio pixel-ratio)
@@ -120,7 +124,7 @@
 
     ;; viewport size
     (set! (.-font ctx) "12px sans-serif")
-    (set! (.-fillStyle ctx) "#284E6D")
+    (set! (.-fillStyle ctx) "#12374C")
     (.fillText ctx (str (.-innerWidth js/window) "×" (.-innerHeight js/window)) 0 10)
 
     (.restore ctx)))
@@ -133,25 +137,28 @@
   (.fillText ctx "Loading resources..." (/ canvas-w 2) (/ canvas-h 2)))
 
 (defn preload-images []
-  (let [names    (concat
-                   (for [i (range 9)]
-                     (str i ".png"))
-                   (for [i (range 9)]
-                     (str i "_solved.png"))
-                   ["q.png" "q_solved.png"
-                    "closed.png" "closed_unreachable.png"
-                    "flag.png"
-                    "btn_flag.png" "btn_flag_pressed.png"
-                    "btn_open.png" "btn_open_pressed.png"])
-        *to-load (atom (count names))]
-    (doseq [name names
-            :let [img (js/Image.)]]
-      (set! (.-onload img)
-        (fn []
-          (swap! *images assoc name img)
-          (when (= 0 (swap! *to-load dec))
-            (render render-game))))
-      (set! (.-src img) (str "i/" name)))))
+  (measure "preload-images"
+    (fn []
+      (let [names    (concat
+                       (for [i (range 9)]
+                         (str i ".png"))
+                       (for [i (range 9)]
+                         (str i "_solved.png"))
+                       ["q.png" "q_solved.png"
+                        "closed.png" "closed_unreachable.png"
+                        "flag.png"
+                        "btn_flag.png" "btn_flag_pressed.png"
+                        "btn_open.png" "btn_open_pressed.png"])
+            *to-load (atom (count names))]
+        (doseq [name names
+                :let [img (js/Image.)]]
+          (set! (.-onload img)
+            (fn []
+              (swap! *images assoc name img)
+              (when (= 0 (swap! *to-load dec))
+                (reset! *screen :game)
+                (render))))
+          (set! (.-src img) (str "i/" name)))))))
 
 (defn render-game [ctx]
   ;; Render cells
@@ -163,6 +170,7 @@
                  (and (not open) (not reachable)) "closed_unreachable.png"
                  (not open)                       "closed.png"
                  (and open solved)                (str label "_solved.png")
+                 (= "q" label)                    "q_solved.png"
                  :else                            (str label ".png"))
           img  (get @*images name)
           px   (-> (* x cell-size) (+ grid-x) (- margin))
@@ -170,7 +178,7 @@
       (.drawImage ctx img px py sprite-size sprite-size)))
 
   ;; Buttons
-  (doseq [[mode {:keys [top]}] mode-buttons
+  #_(doseq [[mode {:keys [top]}] mode-buttons
           :let [pressed? (= mode @*mode)
                 name     (if pressed?
                            (str "btn_" mode "_pressed.png")
@@ -179,7 +187,7 @@
     (.drawImage ctx img 0 (- top margin) sprite-size sprite-size)))
 
 (defn on-grid-click [gx gy]
-  (let [mode                @*mode
+  (let [mode                :open
         key                 (key gx gy)
         {:keys [mine open]} (cell @*field gx gy)]
     (cond
@@ -187,30 +195,43 @@
       :noop
 
       (and (= :flag mode) mine)
-      (swap! *field #(-> %
-                       (update key assoc :open true)
-                       update-reachability))
+      (do
+        (swap! *field #(-> %
+                         (update key assoc :open true)
+                         update-reachability))
+        (render))
 
       (and (= :open mode) (not mine))
-      (swap! *field #(-> %
-                       (update key assoc :open true)
-                       update-reachability))
+      (do
+        (swap! *field #(-> %
+                         (update key assoc :open true)
+                         update-reachability))
+        (render))
 
       :else
       (println "clicked" mode gx gy mine open))))
 
-
 (defn on-click [x y]
-  (cond
-    (inside? x y grid-x grid-y grid-w grid-h)
-    (let [gx (quot (- x grid-x) cell-size)
-          gy (quot (- y grid-y) cell-size)]
-      (on-grid-click gx gy))
+  (measure "on-click"
+    (fn []
+      (cond
+        (inside? x y grid-x grid-y grid-w grid-h)
+        (let [gx (quot (- x grid-x) cell-size)
+              gy (quot (- y grid-y) cell-size)]
+          (on-grid-click gx gy))
 
-    (<= x cell-size)
-    (doseq [[mode {:keys [top]}] mode-buttons
-            :when (inside? x y 0 top cell-size cell-size)]
-      (reset! *mode mode))))
+        #_#_(<= x cell-size)
+        (doseq [[mode {:keys [top]}] mode-buttons
+                :when (inside? x y 0 top cell-size cell-size)]
+          (reset! *mode mode))))))
+
+(defn render []
+  (measure "render"
+    (fn []
+      (with-context
+        (case @*screen
+          :loading render-loading
+          :game    render-game)))))
 
 (defn on-load [_e]
   ;; Prevent all scrolling and rubber band effect
@@ -247,19 +268,17 @@
         (on-click x y))))
 
   ;; Render
-  (render render-loading)
   (preload-images)
   (load-game
-    "OffqooOqqffqfooqOqOffofoqofqoOOffffOffqfqooofoOoOofqffoqfffffOfq"
+    (rand-nth puzzles/eights)
+    #_"OffqqoofffqoooqfoOfOffOfo"
+    #_"ffoqfffOfooqQfoOoqOOqOqffffOfoqoffqO"
+    #_"qffqfOfffoqoffOOfOoqOfooofqffffofOqOfofoOfqfqqooo"
+    #_"fOfffOffffofqffqffoqoqoofoooOofooofofOOoqfofqfoqq"
+    #_"OffqooOqqffqfooqOqOffofoqofqoOOffffOffqfqooofoOoOofqffoqfffffOfq"
     #_"OffooOfOqffOqfoqqOOqfOfOqqofOqfoffqoooofQqofofoffqfooqfqfffffoff"
     #_"OffOfofqofqqfQfOOqoOoqOfofOfoffffffqoqoqOfOfffqooqOOfqfOfOfQfoqf")
 
-  (add-watch *field :render
-    (fn [_ _ _ _]
-      (render render-game)))
-
-  (add-watch *mode :render
-    (fn [_ _ _ _]
-      (render render-game))))
+  (render))
 
 (.addEventListener js/window "load" on-load)
