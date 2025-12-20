@@ -1,4 +1,4 @@
 node_modules
-/public/*.mjs
+/public/sapper/*.mjs
 *.sync-conflict-*
 .syncthing.*

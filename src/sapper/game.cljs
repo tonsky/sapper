@@ -12,9 +12,10 @@
 (def canvas-scale 1)
 (def cell-size 70)
 (def sprite-size 100)
-(def margin (-> cell-size (- sprite-size) (/ 2)))
+(def margin (-> sprite-size (- cell-size) (/ 2)))
 (def field {})
 (def flags 0)
+(def flag-gap 20)
 (def field-w 0)
 (def field-h 0)
 (def grid-x 0)
@@ -24,6 +25,10 @@
 (def images {})
 (def screen :loading)
 (def render-requested false)
+(def dragging-flag false)
+(def drag-type nil)
+(def drag-x 0)
+(def drag-y 0)
 
 (declare render maybe-render open-cell flag-cell)
 
@@ -67,12 +72,34 @@
 (defn get-cell [x y]
   (get field (key x y)))
 
-(defn inside? [x y l t w h]
-  (and
-    (<= l x)
-    (< x (+ l w))
-    (<= t y)
-    (< y (+ t h))))
+(defn inside? [x y l t w h margin]
+  (let [margin (or margin 0)]
+    (and
+      (<= (- l margin) x)
+      (< x (+ l w margin))
+      (<= (- t margin) y)
+      (< y (+ t h margin)))))
+
+(defn rel-coords [e]
+  (let [rect (.getBoundingClientRect canvas)
+        x    (-> (.-clientX e) (- (.-left rect)) (* dpi) (/ canvas-scale) js/Math.round)
+        y    (-> (.-clientY e) (- (.-top rect)) (* dpi) (/ canvas-scale) js/Math.round)]
+    [x y]))
+
+(defn field-coords [x y]
+  (when (inside? x y grid-x grid-y grid-w grid-h)
+    [(quot (- x grid-x) cell-size)
+     (quot (- y grid-y) cell-size)]))
+
+(defn flag-area []
+  (let [flags' (cond-> flags dragging-flag dec)]
+    (when (pos? flags')
+      (let [total-w  (+ (* (dec flags') flag-gap) cell-size)]
+        [(-> canvas-w (- total-w) (quot 2))
+         (+ grid-y grid-h 30)
+         total-w
+         cell-size
+         flags']))))
 
 (defn index [seq]
   (map vector (range) seq))
@@ -116,7 +143,7 @@
         ("O" "Q") (swap! *to-open conj #(open-cell x y))
         nil)))
     (doseq [[i f] (index (shuffle @*to-open))]
-      (set-timeout (* i 33.3333333) f)))
+      (set-timeout (* i 50) f)))
 
   (update-field)
 
@@ -136,7 +163,7 @@
                    (for [i (range 9)]
                      (str i "_solved.png"))
                    ["q.png" "q_solved.png"
-                    "closed.png" "closed_unreachable.png"
+                    "closed.png" "unreachable.png" "hover.png"
                     "flagged.png" "flag.png"
                     "btn_reload.png"])
         *to-load (atom (count names))]
@@ -153,42 +180,46 @@
 
 (defn render-game [ctx]
   ;; Render cells
-  (doseq [y (range field-w)
-          x (range field-h)]
-    (let [{:keys [mine open label solved reachable]} (get-cell x y)
-          name (cond
-                 (and mine open)                  "flagged.png"
-                 (and (not open) (not reachable)) "closed_unreachable.png"
-                 (not open)                       "closed.png"
-                 (and open solved)                (str label "_solved.png")
-                 (= "q" label)                    "q_solved.png"
-                 :else                            (str label ".png"))
-          img  (get images name)
-          px   (-> (* x cell-size) (+ grid-x margin))
-          py   (-> (* y cell-size) (+ grid-y margin))]
-      (.drawImage ctx img px py sprite-size sprite-size)))
+  (let [[hover-x hover-y] (when (and drag-x drag-y)
+                            (field-coords drag-x drag-y))]
+    (doseq [y (range field-w)
+            x (range field-h)]
+      (let [{:keys [mine open label solved reachable]} (get-cell x y)
+            name (cond
+                   (and (not open) (= x hover-x) (= y hover-y)) "hover.png"
+                   (and mine open)                  "flagged.png"
+                   (and (not open) (not reachable)) "unreachable.png"
+                   (not open)                       "closed.png"
+                   (and open solved)                (str label "_solved.png")
+                   (= "q" label)                    "q_solved.png"
+                   :else                            (str label ".png"))
+            img  (get images name)
+            px   (-> (* x cell-size) (+ grid-x) (- margin))
+            py   (-> (* y cell-size) (+ grid-y) (- margin))]
+        (.drawImage ctx img px py sprite-size sprite-size))))
 
-  ;; Flag counter
-  (when (pos? flags)
-    (let [flag-img  (get images "flag.png")
-          offset    20
-          total-w   (+ (* (dec flags) offset) cell-size)
-          rect-x    (-> canvas-w (- total-w) (quot 2))
-          rect-y    (+ grid-y grid-h 30)]
+  ;; Flags
+  (when-some [[l t w h flags'] (flag-area)]
+    (let [flag-img (get images "flag.png")]
       (set! (.-fillStyle ctx) "#082848")
       (.beginPath ctx)
-      (.roundRect ctx rect-x rect-y total-w cell-size 6)
+      (.roundRect ctx l t w h 6)
       (.fill ctx)
-      (dotimes [i flags]
-        (.drawImage ctx flag-img (+ rect-x (* i offset) margin) (+ rect-y margin) sprite-size sprite-size))))
+      (dotimes [i flags']
+        (.drawImage ctx flag-img
+          (-> l (+ (* i flag-gap)) (- margin))
+          (- t margin)
+          sprite-size sprite-size))))
 
-  #_(doseq [[mode {:keys [top]}] mode-buttons
-            :let [pressed? (= mode @*mode)
-                  name     (if pressed?
-                             (str "btn_" mode "_pressed.png")
-                             (str "btn_" mode ".png"))
-                  img      (get images name)]]
-      (.drawImage ctx img 0 (- top margin) sprite-size sprite-size)))
+  ;; Dragged flag
+  (when dragging-flag
+    (let [flag-img (get images "flag.png")]
+      (.drawImage ctx flag-img
+        (-> drag-x (- margin) (- (quot cell-size 2)))
+        (-> drag-y (- margin) (- (case drag-type
+                                   :mouse (quot cell-size 2)
+                                   :touch cell-size)))
+        sprite-size sprite-size))))
 
 (defn open-cell [gx gy]
   (let [key                 (key gx gy)
@@ -215,8 +246,7 @@
 (defn-log on-click [x y action]
   (cond
     (inside? x y grid-x grid-y grid-w grid-h)
-    (let [gx (quot (- x grid-x) cell-size)
-          gy (quot (- y grid-y) cell-size)
+    (let [[gx gy]             (field-coords x y)
           key                 (key gx gy)
           {:keys [mine open]} (get-cell gx gy)]
       (println "on-grid-click" gx gy action mine open)
@@ -229,12 +259,7 @@
 
     ;; reload button
     (inside? x y (- canvas-w 75) 25 50 50)
-    (.reload (.-location js/window))
-
-    #_#_(<= x cell-size)
-    (doseq [[mode {:keys [top]}] mode-buttons
-            :when (inside? x y 0 top cell-size cell-size)]
-      (reset! *mode mode))))
+    (.reload (.-location js/window))))
 
 (defn on-resize []
   (let [w      (.-innerWidth js/window)
@@ -310,21 +335,69 @@
   (set! canvas (.querySelector js/document "canvas"))
   (on-resize)
 
-  ;; Touch/click listeners
-  (let [rel-coords (fn [e]
-                     (let [rect (.getBoundingClientRect canvas)
-                           x    (-> (.-clientX e) (- (.-left rect)) (* dpi) (/ canvas-scale) js/Math.round)
-                           y    (-> (.-clientY e) (- (.-top rect)) (* dpi) (/ canvas-scale) js/Math.round)]
-                       [x y]))]
+  ;; Touch/click/drag listeners
+  (let [on-start   (fn [x y type]
+                     (set! drag-type type)
+                     (set! drag-x x)
+                     (set! drag-y y)
+                     (let [[l t w h] (flag-area)]
+                       (when (inside? x y l t w h margin)
+                         (set! dragging-flag true)))
+                     (request-render))
+
+        on-move    (fn [x y]
+                     (set! drag-x x)
+                     (set! drag-y y)
+                     (request-render))
+
+        on-end     (fn [x y action]
+                     (set! drag-x nil)
+                     (set! drag-y nil)
+                     (if dragging-flag
+                       (do
+                         (when-some [[gx gy] (field-coords x y)]
+                           (let [{:keys [open]} (get-cell gx gy)]
+                             (when-not open
+                               (flag-cell gx gy))))
+                         (set! dragging-flag false))
+                       (on-click x y action))
+                     (request-render))]
+
+    ;; Touch events
+    (add-event-listener canvas "touchstart"
+      (fn [e]
+        (.preventDefault e)
+        (let [[x y] (rel-coords (aget (.-touches e) 0))]
+          (on-start x y :touch))))
+
+    (add-event-listener canvas "touchmove"
+      (fn [e]
+        (.preventDefault e)
+        (let [[x y] (rel-coords (aget (.-touches e) 0))]
+          (on-move x y))))
+
     (add-event-listener canvas "touchend"
       (fn [e]
         (.preventDefault e)
         (let [[x y] (rel-coords (aget (.-changedTouches e) 0))]
-          (on-click x y :primary))))
-    (add-event-listener canvas "click"
+          (on-end x y :primary))))
+
+    ;; Mouse events
+    (add-event-listener canvas "mousedown"
       (fn [e]
         (let [[x y] (rel-coords e)]
-          (on-click x y :primary))))
+          (on-start x y :mouse))))
+
+    (add-event-listener canvas "mousemove"
+      (fn [e]
+        (let [[x y] (rel-coords e)]
+          (on-move x y))))
+
+    (add-event-listener canvas "mouseup"
+      (fn [e]
+        (let [[x y] (rel-coords e)]
+          (on-end x y :primary))))
+
     (add-event-listener canvas "contextmenu"
       (fn [e]
         (.preventDefault e)
