@@ -4,12 +4,13 @@
    [puzzles :as puzzles]))
 
 (def canvas nil)
-(def canvas-w 700)
-(def canvas-h 1000)
+(def canvas-w 0)
+(def canvas-h 0)
+(def dpi (or (.-devicePixelRatio js/window) 1))
+(def canvas-scale 1)
 (def cell-size 70)
 (def sprite-size 100)
 (def margin (-> sprite-size (- cell-size) (/ 2)))
-(def pixel-ratio (or (.-devicePixelRatio js/window) 1))
 (def *field (atom nil))
 (def field-w 0)
 (def field-h 0)
@@ -86,7 +87,7 @@
       (set! grid-w (* field-w cell-size))
       (set! grid-h (* field-h cell-size))
       (set! grid-x (-> canvas-w (- grid-w) (quot 2)))
-      (set! grid-y (-> canvas-h (- grid-h) (- 230)))
+      (set! grid-y (-> canvas-h (- grid-h) (quot 2)))
       (reset! *field
         (into {}
           (for [i (range (count s))
@@ -118,14 +119,14 @@
 (defn with-context [f & args]
   (let [ctx (.getContext canvas "2d")]
     (.save ctx)
-    (.scale ctx pixel-ratio pixel-ratio)
+    (.scale ctx canvas-scale canvas-scale)
     (.clearRect ctx 0 0 canvas-w canvas-h)
     (apply f ctx args)
 
     ;; viewport size
     (set! (.-font ctx) "12px sans-serif")
-    (set! (.-fillStyle ctx) "#12374C")
-    (.fillText ctx (str (.-innerWidth js/window) "×" (.-innerHeight js/window)) 0 10)
+    (set! (.-fillStyle ctx) "#FFF")
+    (.fillText ctx (str canvas-w "×" canvas-h "@" canvas-scale) 0 10)
 
     (.restore ctx)))
 
@@ -225,6 +226,24 @@
                 :when (inside? x y 0 top cell-size cell-size)]
           (reset! *mode mode))))))
 
+(defn on-resize []
+  (let [w      (.-innerWidth js/window)
+        h      (.-innerHeight js/window)
+        dw     (* w dpi)
+        dh     (* h dpi)
+        scales [4 3 2 1.5 1 0.75 0.5 0.25]
+        sx     (some #(when (<= (* % 700) dw) %) scales)
+        sy     (some #(when (<= (* % 900) dh) %) scales)
+        scale  (min sx sy)]
+    (set! canvas-w (-> dw (/ scale) (/ 2) js/Math.floor (* 2)))
+    (set! canvas-h (-> dh (/ scale) (/ 2) js/Math.floor (* 2)))
+    (set! (.-width canvas) dw)
+    (set! (.-height canvas) dh)
+    (set! canvas-scale scale)
+    (set! grid-x (-> canvas-w (- grid-w) (quot 2)))
+    (set! grid-y (-> canvas-h (- grid-h) (quot 2)))
+    (render)))
+
 (defn render []
   (measure "render"
     (fn []
@@ -254,17 +273,19 @@
     (fn [e]
       (.preventDefault e)))
 
+  ;; Resize listener
+  (.addEventListener js/window "resize" on-resize)
+
   ;; Setup canvas
   (set! canvas (.querySelector js/document "canvas"))
-  (set! (.-width canvas) (* canvas-w pixel-ratio))
-  (set! (.-height canvas) (* canvas-h pixel-ratio))
+  (on-resize)
 
   ;; Click listener
   (.addEventListener canvas "click"
     (fn [e]
-      (let [rect  (.getBoundingClientRect canvas)
-            x     (- (.-clientX e) (.-left rect))
-            y     (- (.-clientY e) (.-top rect))]
+      (let [rect (.getBoundingClientRect canvas)
+            x    (-> (.-clientX e) (- (.-left rect)) (* dpi) (/ canvas-scale) js/Math.round)
+            y    (-> (.-clientY e) (- (.-top rect)) (* dpi) (/ canvas-scale) js/Math.round)]
         (on-click x y))))
 
   ;; Render
