@@ -148,8 +148,7 @@
                        ["q.png" "q_solved.png"
                         "closed.png" "closed_unreachable.png"
                         "flag.png"
-                        "btn_flag.png" "btn_flag_pressed.png"
-                        "btn_open.png" "btn_open_pressed.png"])
+                        "btn_reload.png"])
             *to-load (atom (count names))]
         (doseq [name names
                 :let [img (js/Image.)]]
@@ -179,6 +178,8 @@
       (.drawImage ctx img px py sprite-size sprite-size)))
 
   ;; Buttons
+  (.drawImage ctx (get @*images "btn_reload.png") (- canvas-w 100) 0 sprite-size sprite-size)
+
   #_(doseq [[mode {:keys [top]}] mode-buttons
           :let [pressed? (= mode @*mode)
                 name     (if pressed?
@@ -221,6 +222,9 @@
               gy (quot (- y grid-y) cell-size)]
           (on-grid-click gx gy))
 
+        (inside? x y (- canvas-w 75) 25 50 50)
+        (.reload (.-location js/window))
+
         #_#_(<= x cell-size)
         (doseq [[mode {:keys [top]}] mode-buttons
                 :when (inside? x y 0 top cell-size cell-size)]
@@ -231,7 +235,7 @@
         h      (.-innerHeight js/window)
         dw     (* w dpi)
         dh     (* h dpi)
-        scales [4 3 2 1.5 1 0.75 0.5 0.25]
+        scales [4 3 2 1.75 1.5 1.25 1 0.75 0.6666667 0.5 0.3333333 0.25]
         sx     (some #(when (<= (* % 700) dw) %) scales)
         sy     (some #(when (<= (* % 900) dh) %) scales)
         scale  (min sx sy)]
@@ -280,13 +284,19 @@
   (set! canvas (.querySelector js/document "canvas"))
   (on-resize)
 
-  ;; Click listener
-  (.addEventListener canvas "click"
-    (fn [e]
-      (let [rect (.getBoundingClientRect canvas)
-            x    (-> (.-clientX e) (- (.-left rect)) (* dpi) (/ canvas-scale) js/Math.round)
-            y    (-> (.-clientY e) (- (.-top rect)) (* dpi) (/ canvas-scale) js/Math.round)]
-        (on-click x y))))
+  ;; Touch/click listeners
+  (let [call-on-click
+        (fn [e]
+          (let [rect (.getBoundingClientRect canvas)
+                x    (-> (.-clientX e) (- (.-left rect)) (* dpi) (/ canvas-scale) js/Math.round)
+                y    (-> (.-clientY e) (- (.-top rect)) (* dpi) (/ canvas-scale) js/Math.round)]
+            (on-click x y)))]
+    (.addEventListener canvas "touchend"
+      (fn [e]
+        (.preventDefault e)
+        (call-on-click (aget (.-changedTouches e) 0))))
+    (.addEventListener canvas "click" call-on-click))
+
 
   ;; Render
   (preload-images)
