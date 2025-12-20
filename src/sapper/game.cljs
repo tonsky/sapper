@@ -29,6 +29,8 @@
 (def drag-type nil)
 (def drag-x 0)
 (def drag-y 0)
+(def outline-x nil)
+(def outline-y nil)
 
 (declare render maybe-render open-cell flag-cell)
 
@@ -179,9 +181,9 @@
       (set! (.-src img) (str "i/" name)))))
 
 (defn render-game [ctx]
-  ;; Render cells
   (let [[hover-x hover-y] (when (and drag-x drag-y)
                             (field-coords drag-x drag-y))]
+    ;; cells
     (doseq [y (range field-w)
             x (range field-h)]
       (let [{:keys [mine open label solved reachable]} (get-cell x y)
@@ -196,30 +198,46 @@
             img  (get images name)
             px   (-> (* x cell-size) (+ grid-x) (- margin))
             py   (-> (* y cell-size) (+ grid-y) (- margin))]
-        (.drawImage ctx img px py sprite-size sprite-size))))
+        (.drawImage ctx img px py sprite-size sprite-size)))
 
-  ;; Flags
-  (when-some [[l t w h flags'] (flag-area)]
-    (let [flag-img (get images "flag.png")]
-      (set! (.-fillStyle ctx) "#082848")
-      (.beginPath ctx)
-      (.roundRect ctx l t w h 6)
-      (.fill ctx)
-      (dotimes [i flags']
+    ;; outline
+    (when (and outline-x outline-y)
+      (let [left   (max 0 (dec outline-x))
+            top    (max 0 (dec outline-y))
+            right  (min (dec field-w) (inc outline-x))
+            bottom (min (dec field-h) (inc outline-y))]
+        (set! (.-strokeStyle ctx) "#FFF")
+        (set! (.-lineWidth ctx) 1)
+        (.beginPath ctx)
+        (.roundRect ctx
+          (+ grid-x (* left cell-size))
+          (+ grid-y (* top cell-size))
+          (* (- (inc right) left) cell-size)
+          (* (- (inc bottom) top) cell-size) 10)
+        (.stroke ctx)))
+
+    ;; Flags
+    (when-some [[l t w h flags'] (flag-area)]
+      (let [flag-img (get images "flag.png")]
+        (set! (.-fillStyle ctx) "#082848")
+        (.beginPath ctx)
+        (.roundRect ctx l t w h 6)
+        (.fill ctx)
+        (dotimes [i flags']
+          (.drawImage ctx flag-img
+            (-> l (+ (* i flag-gap)) (- margin))
+            (- t margin)
+            sprite-size sprite-size))))
+
+    ;; Dragged flag
+    (when dragging-flag
+      (let [flag-img (get images "flag.png")]
         (.drawImage ctx flag-img
-          (-> l (+ (* i flag-gap)) (- margin))
-          (- t margin)
-          sprite-size sprite-size))))
-
-  ;; Dragged flag
-  (when dragging-flag
-    (let [flag-img (get images "flag.png")]
-      (.drawImage ctx flag-img
-        (-> drag-x (- margin) (- (quot cell-size 2)))
-        (-> drag-y (- margin) (- (case drag-type
-                                   :mouse (quot cell-size 2)
-                                   :touch cell-size)))
-        sprite-size sprite-size))))
+          (-> drag-x (- margin) (- (quot cell-size 2)))
+          (-> drag-y (- margin) (- (case drag-type
+                                     :mouse (quot cell-size 2)
+                                     :touch cell-size)))
+          sprite-size sprite-size)))))
 
 (defn open-cell [gx gy]
   (let [key                 (key gx gy)
@@ -353,14 +371,39 @@
         on-end     (fn [x y action]
                      (set! drag-x nil)
                      (set! drag-y nil)
-                     (if dragging-flag
-                       (do
-                         (when-some [[gx gy] (field-coords x y)]
-                           (let [{:keys [open]} (get-cell gx gy)]
-                             (when-not open
-                               (flag-cell gx gy))))
-                         (set! dragging-flag false))
-                       (on-click x y action))
+                     (let [[gx gy] (field-coords x y)]
+                       (cond
+                         ;; drop flag
+                         dragging-flag
+                         (do
+                           (when-some [[gx gy] (field-coords x y)]
+                             (let [{:keys [open]} (get-cell gx gy)]
+                               (when-not open
+                                 (flag-cell gx gy))))
+                           (set! dragging-flag false))
+
+                         ;; end outside field
+                         (not (and gx gy))
+                         (do
+                           (set! outline-x nil)
+                           (set! outline-y nil)
+                           (on-click x y action))
+
+                         ;; second click on outlined cell
+                         (and (= gx outline-x) (= gy outline-y))
+                         (do
+                           (set! outline-x nil)
+                           (set! outline-y nil))
+
+                         ;; click on open cell
+                         (:open (get-cell gx gy))
+                         (do
+                           (set! outline-x gx)
+                           (set! outline-y gy))
+
+                         ;; click on closed cell
+                         :else
+                         (on-click x y action)))
                      (request-render))]
 
     ;; Touch events
@@ -385,18 +428,21 @@
     ;; Mouse events
     (add-event-listener canvas "mousedown"
       (fn [e]
-        (let [[x y] (rel-coords e)]
-          (on-start x y :mouse))))
+        (when (= 0 (.-button e))
+          (let [[x y] (rel-coords e)]
+            (on-start x y :mouse)))))
 
     (add-event-listener canvas "mousemove"
       (fn [e]
-        (let [[x y] (rel-coords e)]
-          (on-move x y))))
+        (when (= 0 (.-button e))
+          (let [[x y] (rel-coords e)]
+            (on-move x y)))))
 
     (add-event-listener canvas "mouseup"
       (fn [e]
-        (let [[x y] (rel-coords e)]
-          (on-end x y :primary))))
+        (when (= 0 (.-button e))
+          (let [[x y] (rel-coords e)]
+            (on-end x y :primary)))))
 
     (add-event-listener canvas "contextmenu"
       (fn [e]
@@ -407,16 +453,14 @@
   ;; Render
   (preload-images)
   (load-game
-    #_(rand-nth puzzles/eights)
+    (rand-nth (concat puzzles/fives puzzles/eights))
     #_"OffqqoofffqoooqfoOfOffOfo"
     #_"ffoqfffOfooqQfoOoqOOqOqffffOfoqoffqO"
     #_"qffqfOfffoqoffOOfOoqOfooofqffffofOqOfofoOfqfqqooo"
     #_"fOfffOffffofqffqffoqoqoofoooOofooofofOOoqfofqfoqq"
-    "OffqooOqqffqfooqOqOffofoqofqoOOffffOffqfqooofoOoOofqffoqfffffOfq"
+    #_"OffqooOqqffqfooqOqOffofoqofqoOOffffOffqfqooofoOoOofqffoqfffffOfq"
     #_"OFFQOOOQQFFQFOOQOQOFFOFOQofqoOOffffOffqfqooofoOoOofqffoqfffffOfq"
     #_"OffooOfOqffOqfoqqOOqfOfOqqofOqfoffqoooofQqofofoffqfooqfqfffffoff"
-    #_"OffOfofqofqqfQfOOqoOoqOfofOfoffffffqoqoqOfOfffqooqOOfqfOfOfQfoqf")
+    #_"OffOfofqofqqfQfOOqoOoqOfofOfoffffffqoqoqOfOfffqooqOOfqfOfOfQfoqf"))
 
-  (maybe-render))
-
-  (.addEventListener js/window "load" on-load)
+  (add-event-listener js/window "load" on-load)
