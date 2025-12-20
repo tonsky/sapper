@@ -125,8 +125,8 @@
 
     ;; viewport size
     (set! (.-font ctx) "12px sans-serif")
-    (set! (.-fillStyle ctx) "#FFF")
-    (.fillText ctx (str canvas-w "×" canvas-h "@" canvas-scale) 0 10)
+    (set! (.-fillStyle ctx) "#284E6D")
+    (.fillText ctx (str canvas-w "×" canvas-h "@" canvas-scale) 10 20)
 
     (.restore ctx)))
 
@@ -147,7 +147,7 @@
                          (str i "_solved.png"))
                        ["q.png" "q_solved.png"
                         "closed.png" "closed_unreachable.png"
-                        "flag.png"
+                        "flagged.png"
                         "btn_reload.png"])
             *to-load (atom (count names))]
         (doseq [name names
@@ -166,7 +166,7 @@
           x (range field-h)]
     (let [{:keys [mine open label solved reachable]} (cell @*field x y)
           name (cond
-                 (and mine open)                  "flag.png"
+                 (and mine open)                  "flagged.png"
                  (and (not open) (not reachable)) "closed_unreachable.png"
                  (not open)                       "closed.png"
                  (and open solved)                (str label "_solved.png")
@@ -188,39 +188,40 @@
                 img      (get @*images name)]]
     (.drawImage ctx img 0 (- top margin) sprite-size sprite-size)))
 
-(defn on-grid-click [gx gy]
-  (let [mode                :open
-        key                 (key gx gy)
+(defn on-grid-click [gx gy action]
+  (let [key                 (key gx gy)
         {:keys [mine open]} (cell @*field gx gy)]
+    (println "on-grid-click" gx gy action mine open)
     (cond
       open
       :noop
 
-      (and (= :flag mode) mine)
+      (and (= :secondary action) mine)
       (do
         (swap! *field #(-> %
                          (update key assoc :open true)
                          update-reachability))
         (render))
 
-      (and (= :open mode) (not mine))
+      (and (= :primary action) (not mine))
       (do
         (swap! *field #(-> %
                          (update key assoc :open true)
                          update-reachability))
-        (render))
+        (render)))))
 
-      :else
-      (println "clicked" mode gx gy mine open))))
-
-(defn on-click [x y]
+(defn on-click [x y action]
   (measure "on-click"
     (fn []
+      (println "on-click" x y action)
       (cond
         (inside? x y grid-x grid-y grid-w grid-h)
         (let [gx (quot (- x grid-x) cell-size)
               gy (quot (- y grid-y) cell-size)]
-          (on-grid-click gx gy))
+          (on-grid-click gx gy action))
+
+        (not= :primary action)
+        :noop
 
         (inside? x y (- canvas-w 75) 25 50 50)
         (.reload (.-location js/window))
@@ -285,18 +286,25 @@
   (on-resize)
 
   ;; Touch/click listeners
-  (let [call-on-click
-        (fn [e]
-          (let [rect (.getBoundingClientRect canvas)
-                x    (-> (.-clientX e) (- (.-left rect)) (* dpi) (/ canvas-scale) js/Math.round)
-                y    (-> (.-clientY e) (- (.-top rect)) (* dpi) (/ canvas-scale) js/Math.round)]
-            (on-click x y)))]
+  (let [rel-coords (fn [e]
+                     (let [rect (.getBoundingClientRect canvas)
+                           x    (-> (.-clientX e) (- (.-left rect)) (* dpi) (/ canvas-scale) js/Math.round)
+                           y    (-> (.-clientY e) (- (.-top rect)) (* dpi) (/ canvas-scale) js/Math.round)]
+                       [x y]))]
     (.addEventListener canvas "touchend"
       (fn [e]
         (.preventDefault e)
-        (call-on-click (aget (.-changedTouches e) 0))))
-    (.addEventListener canvas "click" call-on-click))
-
+        (let [[x y] (rel-coords (aget (.-changedTouches e) 0))]
+          (on-click x y :primary))))
+    (.addEventListener canvas "click"
+      (fn [e]
+        (let [[x y] (rel-coords e)]
+          (on-click x y :primary))))
+    (.addEventListener canvas "contextmenu"
+      (fn [e]
+        (.preventDefault e)
+        (let [[x y] (rel-coords e)]
+          (on-click x y :secondary)))))
 
   ;; Render
   (preload-images)
@@ -312,4 +320,4 @@
 
   (render))
 
-(.addEventListener js/window "load" on-load)
+  (.addEventListener js/window "load" on-load)
