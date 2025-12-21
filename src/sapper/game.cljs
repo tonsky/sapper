@@ -8,6 +8,7 @@
 (def canvas nil)
 (def canvas-w 0)
 (def canvas-h 0)
+(def puzzle)
 (def dpi (or (.-devicePixelRatio js/window) 1))
 (def canvas-scale 1)
 (def cell-size 70)
@@ -114,42 +115,43 @@
                         (fn [[x y]] (get-cell x y))
                         (neighbours x y))]]
     (when (and (not= "q" label) (not mine))
-      (assoc! cell :label (->> nbs (filter :mine) (remove :open) (count) str)))
+      (assoc! cell :label (->> nbs (filter :mine) #_(remove :open) (count) str)))
     (assoc! cell :solved (every? :open nbs))
     (assoc! cell :reachable (some #(and (:open %) (not (:mine %)) (not= "q" (:label %))) nbs)))
   (set! flags (->> field vals (filter :mine) (remove :open) (count)))
   (when (= 0 flags)
     (set! screen :victory)))
 
-(defn-log load-game [s]
-  (set! field-w (js/Math.sqrt (count s)))
-  (set! field-h (js/Math.sqrt (count s)))
+(defn-log load-game []
+  (set! field-w (js/Math.sqrt (count puzzle)))
+  (set! field-h (js/Math.sqrt (count puzzle)))
   (set! grid-w (* field-w cell-size))
   (set! grid-h (* field-h cell-size))
   (set! grid-x (-> canvas-w (- grid-w) (quot 2)))
   (set! grid-y (-> canvas-h (- grid-h) (quot 2)))
   (let [*to-open (atom [])]
     (set! field {})
-    (dotimes [i (count s)]
+    (dotimes [i (count puzzle)]
       (let [x  (mod i field-w)
-                  y  (quot i field-w)
-                  ch (nth s i)]
-      (assoc! field (key x y)
+            y  (quot i field-w)
+            ch (nth puzzle i)]
+        (assoc! field (key x y)
+          (case ch
+            "f" {:mine true,  :open false}
+            "F" {:mine true,  :open false}
+            "o" {:mine false, :open false}
+            "O" {:mine false, :open false}
+            "q" {:mine false, :open false, :label "q"}
+            "Q" {:mine false, :open true,  :label "q"}))
         (case ch
-          "f" {:mine true,  :open false}
-          "F" {:mine true,  :open false}
-          "o" {:mine false, :open false}
-          "O" {:mine false, :open false}
-          "q" {:mine false, :open false, :label "q"}
-          "Q" {:mine false, :open true,  :label "q"}))
-      (case ch
-        "F"       (swap! *to-open conj #(flag-cell x y))
-        ("O" "Q") (swap! *to-open conj #(open-cell x y))
-        nil)))
+          "F"       (swap! *to-open conj #(flag-cell x y))
+          ("O" "Q") (swap! *to-open conj #(open-cell x y))
+          nil)))
     (doseq [[i f] (index (shuffle @*to-open))]
       (set-timeout (* i 50) f)))
 
   (update-field)
+  (set! screen :game)
 
   (request-render))
 
@@ -169,7 +171,7 @@
                    ["q.png" "q_solved.png"
                     "closed.png" "unreachable.png" "hover.png"
                     "flagged.png" "flag.png"
-                    "btn_reload.png"])
+                    "btn_retry.png" "btn_reload.png"])
         *to-load (atom (count names))]
     (doseq [name names
             :let [img (js/Image.)]]
@@ -177,8 +179,7 @@
         (fn []
           (assoc! images name img)
           (when (= 0 (swap! *to-load dec))
-            (set! screen :game)
-            (request-render)
+            (load-game)
             (maybe-render))))
       (set! (.-src img) (str "i/" name)))))
 
@@ -269,13 +270,17 @@
     (let [[gx gy]             (field-coords x y)
           key                 (key gx gy)
           {:keys [mine open]} (get-cell gx gy)]
-      (println "on-grid-click" gx gy action mine open)
+      #_(println "on-grid-click" gx gy action mine open)
       (case action
         :primary   (open-cell gx gy)
         :secondary (flag-cell gx gy)))
 
     (not= :primary action)
     :noop
+
+    ;; retry button
+    (inside? x y (- canvas-w 150) 25 50 50)
+    (load-game puzzle)
 
     ;; reload button
     (inside? x y (- canvas-w 75) 25 50 50)
@@ -313,6 +318,8 @@
       :victory   (render-text ctx "Congratulations! You won!"))
 
     ;; buttons
+    (when-some [img (get images "btn_retry.png")]
+      (.drawImage ctx img  (- canvas-w 175) 0 sprite-size sprite-size))
     (when-some [img (get images "btn_reload.png")]
       (.drawImage ctx img  (- canvas-w 100) 0 sprite-size sprite-size))
 
@@ -454,8 +461,7 @@
           (on-click x y :secondary)))))
 
   ;; Render
-  (preload-images)
-  (load-game
+  (set! puzzle
     (rand-nth (concat puzzles/fives puzzles/eights))
     #_"OffqqoofffqoooqfoOfOffOfo"
     #_"ffoqfffOfooqQfoOoqOOqOqffffOfoqoffqO"
@@ -464,6 +470,7 @@
     #_"OffqooOqqffqfooqOqOffofoqofqoOOffffOffqfqooofoOoOofqffoqfffffOfq"
     #_"OFFQOOOQQFFQFOOQOQOFFOFOQofqoOOffffOffqfqooofoOoOofqffoqfffffOfq"
     #_"OffooOfOqffOqfoqqOOqfOfOqqofOqfoffqoooofQqofofoffqfooqfqfffffoff"
-    #_"OffOfofqofqqfQfOOqoOoqOfofOfoffffffqoqoqOfOfffqooqOOfqfOfOfQfoqf"))
+    #_"OffOfofqofqqfQfOOqoOoqOfofOfoffffffqoqoqOfOfffqooqOOfqfOfOfQfoqf")
+  (preload-images))
 
-  (add-event-listener js/window "load" on-load)
+(add-event-listener js/window "load" on-load)

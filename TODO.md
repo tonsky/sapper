@@ -1,0 +1,13 @@
+- [ ] Pencils/drawing
+- [ ] Try highlighting cells instead of outline
+- [ ] Level select
+- [ ] Save progression
+- [ ] Auto-open when zero
+- [ ] Draw zero as empty cell
+- [ ] Click to fill when count(closed) == label
+- [ ] Expert mode
+- [ ] Setting screen
+- [ ] Classic mode/modern mode
+- [ ] Colored numbers?
+- [ ] Game over screen
+- [ ] Retry button

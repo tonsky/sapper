@@ -5,5 +5,5 @@
      (let [start#  (js/performance.now)
            result# (do ~@body)
            end#    (js/performance.now)]
-       (println ~(str name) (- end# start#) "ms")
+       #_(println ~(str name) (js/Math.round (- end# start#)) "ms")
        result#)))
