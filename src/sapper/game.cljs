@@ -214,18 +214,35 @@
 
     ;; outline
     (when (and outline-x outline-y)
-      (let [left   (max 0 (dec outline-x))
-            top    (max 0 (dec outline-y))
-            right  (min (dec field-w) (inc outline-x))
-            bottom (min (dec field-h) (inc outline-y))]
-        (set! (.-strokeStyle ctx) "#FFF")
-        (set! (.-lineWidth ctx) 1)
+      (let [left    (max 0 (dec outline-x))
+            top     (max 0 (dec outline-y))
+            right   (min (dec field-w) (inc outline-x))
+            bottom  (min (dec field-h) (inc outline-y))
+            padding 4
+            {:keys [label mine solved]}(get-cell outline-x outline-y)
+            color   (cond
+                      mine          "#E15757"
+                      solved        "#73A2C9"
+                      (= "q" label) "#73A2C9"
+                      (= "0" label) "#FFFFFF"
+                      (= "1" label) "#FF63C1"
+                      (= "2" label) "#3EA8FF"
+                      (= "3" label) "#E15757"
+                      (= "4" label) "#FFEC41"
+                      (= "5" label) "#33FB37"
+                      (= "6" label) "#6365FF"
+                      (= "7" label) "#63FFF7"
+                      (= "8" label) "#FFFFFF"
+                      :else         #"73A2C9")]
+        (set! (.-strokeStyle ctx) color)
+        (set! (.-lineWidth ctx) 3)
         (.beginPath ctx)
         (.roundRect ctx
-          (+ grid-x (* left cell-size))
-          (+ grid-y (* top cell-size))
-          (* (- (inc right) left) cell-size)
-          (* (- (inc bottom) top) cell-size) 10)
+          (+ grid-x (* left cell-size) (- padding))
+          (+ grid-y (* top cell-size) (- padding))
+          (-> (inc right) (- left) (* cell-size) (+ (* 2 padding)))
+          (-> (inc bottom) (- top) (* cell-size) (+ (* 2 padding)))
+          10)
         (.stroke ctx)))
 
     ;; Flags
@@ -322,28 +339,29 @@
 (defn-log render []
   (let [ctx (.getContext canvas "2d")]
     (.save ctx)
-    (.scale ctx canvas-scale canvas-scale)
-    (.clearRect ctx 0 0 canvas-w canvas-h)
+    (try
+      (.scale ctx canvas-scale canvas-scale)
+      (.clearRect ctx 0 0 canvas-w canvas-h)
 
-    ;; render screen
-    (case screen
-      :loading   (render-text ctx "Loading resources...")
-      :game      (render-game ctx)
-      :game-over (render-text ctx "Game Over")
-      :victory   (render-text ctx "Congratulations! You won!"))
+      ;; render screen
+      (case screen
+        :loading   (render-text ctx "Loading resources...")
+        :game      (render-game ctx)
+        :game-over (render-text ctx "Game Over")
+        :victory   (render-text ctx "Congratulations! You won!"))
 
-    ;; buttons
-    (when-some [img (get images "btn_retry.png")]
-      (.drawImage ctx img  (- canvas-w 175) 0 sprite-size sprite-size))
-    (when-some [img (get images "btn_reload.png")]
-      (.drawImage ctx img  (- canvas-w 100) 0 sprite-size sprite-size))
+      ;; buttons
+      (when-some [img (get images "btn_retry.png")]
+        (.drawImage ctx img  (- canvas-w 175) 0 sprite-size sprite-size))
+      (when-some [img (get images "btn_reload.png")]
+        (.drawImage ctx img  (- canvas-w 100) 0 sprite-size sprite-size))
 
-    ;; viewport size
-    (set! (.-font ctx) "12px sans-serif")
-    (set! (.-fillStyle ctx) "#284E6D")
-    (.fillText ctx (str canvas-w "×" canvas-h "@" canvas-scale) 10 20)
-
-    (.restore ctx)))
+      ;; viewport size
+      (set! (.-font ctx) "12px sans-serif")
+      (set! (.-fillStyle ctx) "#284E6D")
+      (.fillText ctx (str canvas-w "×" canvas-h "@" canvas-scale) 10 20)
+      (finally
+        (.restore ctx)))))
 
 (defn maybe-render []
   (when render-requested

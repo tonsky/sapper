@@ -8,6 +8,7 @@
 - [ ] Pencils/drawing
 - [ ] Expert mode
 - [ ] Setting screen
+- [x] Outline color matches cell
 - [x] Classic mode/modern mode
 - [x] Colored numbers?
 - [x] Retry button
