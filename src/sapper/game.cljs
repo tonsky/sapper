@@ -117,7 +117,9 @@
       (assoc! cell :label (->> nbs (filter :mine) (remove :open) (count) str)))
     (assoc! cell :solved (every? :open nbs))
     (assoc! cell :reachable (some #(and (:open %) (not (:mine %)) (not= "q" (:label %))) nbs)))
-  (set! flags (->> field vals (filter :mine) (remove :open) (count))))
+  (set! flags (->> field vals (filter :mine) (remove :open) (count)))
+  (when (= 0 flags)
+    (set! screen :victory)))
 
 (defn-log load-game [s]
   (set! field-w (js/Math.sqrt (count s)))
@@ -307,7 +309,8 @@
     (case screen
       :loading   (render-text ctx "Loading resources...")
       :game      (render-game ctx)
-      :game-over (render-text ctx "Game Over"))
+      :game-over (render-text ctx "Game Over")
+      :victory   (render-text ctx "Congratulations! You won!"))
 
     ;; buttons
     (when-some [img (get images "btn_reload.png")]
