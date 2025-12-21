@@ -9,6 +9,7 @@
 (def canvas-w 0)
 (def canvas-h 0)
 (def puzzle)
+(def modern true)
 (def dpi (or (.-devicePixelRatio js/window) 1))
 (def canvas-scale 1)
 (def cell-size 70)
@@ -115,7 +116,11 @@
                         (fn [[x y]] (get-cell x y))
                         (neighbours x y))]]
     (when (and (not= "q" label) (not mine))
-      (assoc! cell :label (->> nbs (filter :mine) #_(remove :open) (count) str)))
+      (assoc! cell :label (cond->> nbs
+                            true   (filter :mine)
+                            modern (remove :open)
+                            true   (count)
+                            true   (str))))
     (assoc! cell :solved (every? :open nbs))
     (assoc! cell :reachable (some #(and (:open %) (not (:mine %)) (not= "q" (:label %))) nbs)))
   (set! flags (->> field vals (filter :mine) (remove :open) (count)))
@@ -123,18 +128,21 @@
     (set! screen :victory)))
 
 (defn-log load-game []
-  (set! field-w (js/Math.sqrt (count puzzle)))
-  (set! field-h (js/Math.sqrt (count puzzle)))
-  (set! grid-w (* field-w cell-size))
-  (set! grid-h (* field-h cell-size))
-  (set! grid-x (-> canvas-w (- grid-w) (quot 2)))
-  (set! grid-y (-> canvas-h (- grid-h) (quot 2)))
-  (let [*to-open (atom [])]
+  (let [code     (re-find #"[foqFOQ]+" puzzle)
+        len      (count code)
+        *to-open (atom [])]
+    (set! field-w (js/Math.sqrt len))
+    (set! field-h (js/Math.sqrt len))
+    (set! grid-w (* field-w cell-size))
+    (set! grid-h (* field-h cell-size))
+    (set! grid-x (-> canvas-w (- grid-w) (quot 2)))
+    (set! grid-y (-> canvas-h (- grid-h) (quot 2)))
     (set! field {})
-    (dotimes [i (count puzzle)]
+
+    (dotimes [i len]
       (let [x  (mod i field-w)
             y  (quot i field-w)
-            ch (nth puzzle i)]
+            ch (nth code i)]
         (assoc! field (key x y)
           (case ch
             "f" {:mine true,  :open false}
@@ -147,13 +155,14 @@
           "F"       (swap! *to-open conj #(flag-cell x y))
           ("O" "Q") (swap! *to-open conj #(open-cell x y))
           nil)))
+
     (doseq [[i f] (index (shuffle @*to-open))]
-      (set-timeout (* i 50) f)))
+      (set-timeout (* i 50) f))
 
-  (update-field)
-  (set! screen :game)
+    (update-field)
+    (set! screen :game)
 
-  (request-render))
+    (request-render)))
 
 (defn render-text [ctx text]
   (set! (.-font ctx) "24px sans-serif")
@@ -170,7 +179,7 @@
                      (str i "_solved.png"))
                    ["q.png" "q_solved.png"
                     "closed.png" "unreachable.png" "hover.png"
-                    "flagged.png" "flag.png"
+                    "flagged.png" "flagged_classic.png" "flag.png"
                     "btn_retry.png" "btn_reload.png"])
         *to-load (atom (count names))]
     (doseq [name names
@@ -192,7 +201,7 @@
       (let [{:keys [mine open label solved reachable]} (get-cell x y)
             name (cond
                    (and (not open) (= x hover-x) (= y hover-y)) "hover.png"
-                   (and mine open)                  "flagged.png"
+                   (and mine open)                  (if modern "flagged.png" "flagged_classic.png")
                    (and (not open) (not reachable)) "unreachable.png"
                    (not open)                       "closed.png"
                    (and open solved)                (str label "_solved.png")
@@ -240,7 +249,13 @@
           (-> drag-y (- margin) (- (case drag-type
                                      :mouse (quot cell-size 2)
                                      :touch cell-size)))
-          sprite-size sprite-size)))))
+          sprite-size sprite-size)))
+
+    ;; level name
+    (let [name (re-find #"^[^ ]+" puzzle)]
+      (set! (.-font ctx) "12px sans-serif")
+      (set! (.-fillStyle ctx) "#284E6D")
+      (.fillText ctx name 10 35))))
 
 (defn open-cell [gx gy]
   (let [key                 (key gx gy)
@@ -462,7 +477,7 @@
 
   ;; Render
   (set! puzzle
-    (rand-nth (concat puzzles/fives puzzles/eights))
+    (rand-nth puzzles/puzzles)
     #_"OffqqoofffqoooqfoOfOffOfo"
     #_"ffoqfffOfooqQfoOoqOOqOqffffOfoqoffqO"
     #_"qffqfOfffoqoffOOfOoqOfooofqffffofOqOfofoOfqfqqooo"

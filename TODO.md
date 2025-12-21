@@ -1,13 +1,14 @@
-- [ ] Pencils/drawing
 - [ ] Try highlighting cells instead of outline
+- [ ] Draw zero as empty cell
+- [ ] Auto-open when zero
 - [ ] Level select
 - [ ] Save progression
-- [ ] Auto-open when zero
-- [ ] Draw zero as empty cell
 - [ ] Click to fill when count(closed) == label
+- [ ] Game over screen
+- [ ] Pencils/drawing
 - [ ] Expert mode
 - [ ] Setting screen
-- [ ] Classic mode/modern mode
-- [ ] Colored numbers?
-- [ ] Game over screen
-- [ ] Retry button
+- [x] Classic mode/modern mode
+- [x] Colored numbers?
+- [x] Retry button
+- [x] Show puzzle name
