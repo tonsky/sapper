@@ -1,3 +1,6 @@
+- [ ] Pencils/drawing
+- [ ] Puzzle in URL
+- [ ] Open animation
 - [ ] Try highlighting cells instead of outline
 - [ ] Draw zero as empty cell
 - [ ] Auto-open when zero
@@ -5,7 +8,6 @@
 - [ ] Save progression
 - [ ] Click to fill when count(closed) == label
 - [ ] Game over screen
-- [ ] Pencils/drawing
 - [ ] Expert mode
 - [ ] Setting screen
 - [x] Outline color matches cell

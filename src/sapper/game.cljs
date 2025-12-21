@@ -3,7 +3,7 @@
    [clojure.string :as str]
    [sapper.puzzles :as puzzles])
   (:require-macros
-   [sapper.macros :refer [defn-log]]))
+   [sapper.macros :refer [defn-log cond+]]))
 
 (def canvas nil)
 (def canvas-w 0)
@@ -33,6 +33,8 @@
 (def drag-y 0)
 (def outline-x nil)
 (def outline-y nil)
+(def tool nil)
+(def tools [:yellow :green :red :blue :eraser])
 
 (declare render maybe-render open-cell flag-cell)
 
@@ -105,7 +107,7 @@
          cell-size
          flags']))))
 
-(defn index [seq]
+(defn indexed [seq]
   (map vector (range) seq))
 
 (defn-log update-field []
@@ -136,7 +138,7 @@
     (set! grid-w (* field-w cell-size))
     (set! grid-h (* field-h cell-size))
     (set! grid-x (-> canvas-w (- grid-w) (quot 2)))
-    (set! grid-y (-> canvas-h (- grid-h) (quot 2)))
+    (set! grid-y (-> canvas-h (- 100) (- grid-h) (quot 2)))
     (set! field {})
 
     (dotimes [i len]
@@ -156,7 +158,7 @@
           ("O" "Q") (swap! *to-open conj #(open-cell x y))
           nil)))
 
-    (doseq [[i f] (index (shuffle @*to-open))]
+    (doseq [[i f] (indexed (shuffle @*to-open))]
       (set-timeout (* i 50) f))
 
     (update-field)
@@ -180,7 +182,8 @@
                    ["q.png" "q_solved.png"
                     "closed.png" "unreachable.png" "hover.png"
                     "flagged.png" "flagged_classic.png" "flag.png"
-                    "btn_retry.png" "btn_reload.png"])
+                    "btn_retry.png" "btn_reload.png"
+                    "tool_yellow.png" "tool_green.png" "tool_red.png" "tool_blue.png" "tool_eraser.png"])
         *to-load (atom (count names))]
     (doseq [name names
             :let [img (js/Image.)]]
@@ -200,7 +203,7 @@
             x (range field-h)]
       (let [{:keys [mine open label solved reachable]} (get-cell x y)
             name (cond
-                   (and (not open) (= x hover-x) (= y hover-y)) "hover.png"
+                   (and (not tool) (not open) (= x hover-x) (= y hover-y)) "hover.png"
                    (and mine open)                  (if modern "flagged.png" "flagged_classic.png")
                    (and (not open) (not reachable)) "unreachable.png"
                    (not open)                       "closed.png"
@@ -268,6 +271,17 @@
                                      :touch cell-size)))
           sprite-size sprite-size)))
 
+    ;; Tools
+    (let [width (* (count tools) cell-size)
+          left  (quot (- canvas-w width) 2)]
+      (doseq [[i t] (indexed tools)
+              :let [x (+ left (* i cell-size))
+                    y (if (= tool t)
+                        (- canvas-h sprite-size)
+                        (+ (- canvas-h sprite-size) 20))
+                    img (get images (str "tool_" t ".png"))]]
+        (.drawImage ctx img (- x margin) y sprite-size sprite-size)))
+
     ;; level name
     (let [name (re-find #"^[^ ]+" puzzle)]
       (set! (.-font ctx) "12px sans-serif")
@@ -297,7 +311,7 @@
     (request-render)))
 
 (defn-log on-click [x y action]
-  (cond
+  (cond+
     (inside? x y grid-x grid-y grid-w grid-h)
     (let [[gx gy]             (field-coords x y)
           key                 (key gx gy)
@@ -306,6 +320,15 @@
       (case action
         :primary   (open-cell gx gy)
         :secondary (flag-cell gx gy)))
+
+    :let [toolbox-w (* (count tools) cell-size)
+          toolbox-x (quot (- canvas-w toolbox-w) 2)]
+    (inside? x y toolbox-x (- canvas-h sprite-size) toolbox-w 100)
+    (let [i (quot (- x toolbox-x) cell-size)
+          t (nth tools i)]
+      (if (= tool t)
+        (set! tool nil)
+        (set! tool t)))
 
     (not= :primary action)
     :noop
@@ -316,7 +339,12 @@
 
     ;; reload button
     (inside? x y (- canvas-w 75) 25 50 50)
-    (.reload (.-location js/window))))
+    (.reload (.-location js/window))
+
+    :else
+    (do
+      (set! outline-x nil)
+      (set! outline-y nil))))
 
 (defn on-resize []
   (let [w      (.-innerWidth js/window)
@@ -403,7 +431,8 @@
                      (set! drag-y y)
                      (let [[l t w h] (flag-area)]
                        (when (inside? x y l t w h margin)
-                         (set! dragging-flag true)))
+                         (set! dragging-flag true)
+                         (set! tool nil)))
                      (request-render))
 
         on-move    (fn [x y]
@@ -427,10 +456,7 @@
 
                          ;; end outside field
                          (not (and gx gy))
-                         (do
-                           (set! outline-x nil)
-                           (set! outline-y nil)
-                           (on-click x y action))
+                         (on-click x y action)
 
                          ;; second click on outlined cell
                          (and (= gx outline-x) (= gy outline-y))
