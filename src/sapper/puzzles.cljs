@@ -1,4 +1,4 @@
-(ns puzzles
+(ns sapper.puzzles
   (:require
    [clojure.string :as str]))
 
