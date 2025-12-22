@@ -6,6 +6,7 @@
    [sapper.macros :refer [defn-log cond+]]))
 
 (def canvas nil)
+(def notes nil)
 (def canvas-w 0)
 (def canvas-h 0)
 (def puzzle)
@@ -25,14 +26,15 @@
 (def grid-w 0)
 (def grid-h 0)
 (def images {})
+(def outline-x nil)
+(def outline-y nil)
 (def screen :loading)
 (def render-requested false)
+
 (def dragging-flag false)
 (def drag-type nil)
 (def drag-x 0)
 (def drag-y 0)
-(def outline-x nil)
-(def outline-y nil)
 (def tool nil)
 (def tools [:yellow :green :red :blue :eraser])
 
@@ -164,6 +166,10 @@
     (update-field)
     (set! screen :game)
 
+    ;; tools
+    (.clearRect (.getContext notes "2d") 0 0 canvas-w canvas-h)
+    (set! tool nil)
+
     (request-render)))
 
 (defn render-text [ctx text]
@@ -277,14 +283,19 @@
       (doseq [[i t] (indexed tools)
               :let [x (+ left (* i cell-size))
                     y (if (= tool t)
-                        (- canvas-h sprite-size)
-                        (+ (- canvas-h sprite-size) 20))
+                        (- canvas-h sprite-size 35)
+                        (- canvas-h sprite-size 15))
                     img (get images (str "tool_" t ".png"))]]
-        (.drawImage ctx img (- x margin) y sprite-size sprite-size)))
+        (.drawImage ctx img (- x margin) y sprite-size sprite-size))
+      (set! (.-fillStyle ctx) "#113050")
+      (.fillRect ctx (- left margin) (- canvas-h 35) (+ width (* 2 margin)) 35)
+      (set! (.-fillStyle ctx) "#202122")
+      (.fillRect ctx (- left margin) (- canvas-h 35) (+ width (* 2 margin)) 2))
 
     ;; level name
     (let [name (re-find #"^[^ ]+" puzzle)]
       (set! (.-font ctx) "12px sans-serif")
+      (set! (.-textAlign ctx) "left")
       (set! (.-fillStyle ctx) "#284E6D")
       (.fillText ctx name 10 35))))
 
@@ -352,44 +363,50 @@
         dw     (* w dpi)
         dh     (* h dpi)
         scales [4 3 2 1.75 1.5 1.25 1 0.75 0.6666667 0.5 0.3333333 0.25]
-        sx     (some #(when (<= (* % 700) dw) %) scales)
+        sx     (some #(when (<= (* % 560) dw) %) scales)
         sy     (some #(when (<= (* % 900) dh) %) scales)
         scale  (min sx sy)]
     (set! canvas-w (-> dw (/ scale) (/ 2) js/Math.floor (* 2)))
     (set! canvas-h (-> dh (/ scale) (/ 2) js/Math.floor (* 2)))
+    (set! canvas-scale scale)
+
     (set! (.-width canvas) dw)
     (set! (.-height canvas) dh)
-    (set! canvas-scale scale)
+    (let [ctx (.getContext canvas "2d")]
+      (.reset ctx)
+      (.scale ctx canvas-scale canvas-scale))
+
+    (set! (.-width notes) dw)
+    (set! (.-height notes) dh)
+    (let [ctx (.getContext notes "2d")]
+      (.reset ctx)
+      (.scale ctx canvas-scale canvas-scale))
+
     (set! grid-x (-> canvas-w (- grid-w) (quot 2)))
     (set! grid-y (-> canvas-h (- grid-h) (quot 2)))
     (request-render)))
 
 (defn-log render []
   (let [ctx (.getContext canvas "2d")]
-    (.save ctx)
-    (try
-      (.scale ctx canvas-scale canvas-scale)
-      (.clearRect ctx 0 0 canvas-w canvas-h)
+    (.clearRect ctx 0 0 canvas-w canvas-h)
 
-      ;; render screen
-      (case screen
-        :loading   (render-text ctx "Loading resources...")
-        :game      (render-game ctx)
-        :game-over (render-text ctx "Game Over")
-        :victory   (render-text ctx "Congratulations! You won!"))
+    ;; render screen
+    (case screen
+      :loading   (render-text ctx "Loading resources...")
+      :game      (render-game ctx)
+      :game-over (render-text ctx "Game Over")
+      :victory   (render-text ctx "Congratulations! You won!"))
 
-      ;; buttons
-      (when-some [img (get images "btn_retry.png")]
-        (.drawImage ctx img  (- canvas-w 175) 0 sprite-size sprite-size))
-      (when-some [img (get images "btn_reload.png")]
-        (.drawImage ctx img  (- canvas-w 100) 0 sprite-size sprite-size))
+    ;; buttons
+    (when-some [img (get images "btn_retry.png")]
+      (.drawImage ctx img  (- canvas-w 175) 0 sprite-size sprite-size))
+    (when-some [img (get images "btn_reload.png")]
+      (.drawImage ctx img  (- canvas-w 100) 0 sprite-size sprite-size))
 
-      ;; viewport size
-      (set! (.-font ctx) "12px sans-serif")
-      (set! (.-fillStyle ctx) "#284E6D")
-      (.fillText ctx (str canvas-w "×" canvas-h "@" canvas-scale) 10 20)
-      (finally
-        (.restore ctx)))))
+    ;; viewport size
+    (set! (.-font ctx) "12px sans-serif")
+    (set! (.-fillStyle ctx) "#284E6D")
+    (.fillText ctx (str canvas-w "×" canvas-h "@" canvas-scale) 10 20)))
 
 (defn maybe-render []
   (when render-requested
@@ -421,7 +438,8 @@
   (add-event-listener js/window "resize" on-resize)
 
   ;; Setup canvas
-  (set! canvas (.querySelector js/document "canvas"))
+  (set! canvas (.querySelector js/document "#canvas"))
+  (set! notes (.querySelector js/document "#notes"))
   (on-resize)
 
   ;; Touch/click/drag listeners
@@ -429,6 +447,22 @@
                      (set! drag-type type)
                      (set! drag-x x)
                      (set! drag-y y)
+                     (when tool
+                       (let [ctx (.getContext notes "2d")]
+                         (set! (.-lineWidth ctx) (case tool :eraser 30 6))
+                         (set! (.-strokeStyle ctx)
+                           (case tool
+                             :yellow "#F6CB1D"
+                             :green  "#48C668"
+                             :red    "#F44D44"
+                             :blue   "#2D87F2"
+                             :eraser "#113050"))
+                         (set! (.-lineCap ctx) "round")
+                         (set! (.-lineJoin ctx) "round")
+                         (set! (.-globalCompositeOperation ctx) (case tool :eraser "destination-out" "source-over"))
+                         (.beginPath ctx)
+                         (.moveTo ctx drag-x drag-y)))
+
                      (let [[l t w h] (flag-area)]
                        (when (inside? x y l t w h margin)
                          (set! dragging-flag true)
@@ -436,11 +470,16 @@
                      (request-render))
 
         on-move    (fn [x y]
+                     (when (and drag-type tool drag-x drag-y)
+                       (let [ctx (.getContext notes "2d")]
+                         (.quadraticCurveTo ctx drag-x drag-y (/ (+ drag-x x) 2) (/ (+ drag-y y) 2))
+                         (.stroke ctx)))
                      (set! drag-x x)
                      (set! drag-y y)
                      (request-render))
 
         on-end     (fn [x y action]
+                     (set! drag-type nil)
                      (set! drag-x nil)
                      (set! drag-y nil)
                      (let [[gx gy] (field-coords x y)]

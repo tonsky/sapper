@@ -3,5 +3,7 @@
 html, body { width: 100%; height: 100%; overflow: hidden; position: fixed; -webkit-overflow-scrolling: none; overscroll-behavior: none; }
 body { touch-action: none; }
 
-body { background-color: #000; display: flex; align-items: center; justify-content: center; }
-canvas { background: #103050; width: 100dvw; height: 100dvh; }
+body { background-color: #000; }
+canvas { position: absolute; top: 0; left: 0; width: 100dvw; height: 100dvh; }
+#canvas { background: #103050; }
+#notes { pointer-events: none; }
