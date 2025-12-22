@@ -36,7 +36,14 @@
 (def drag-x 0)
 (def drag-y 0)
 (def tool nil)
-(def tools [:yellow :green :red :blue :eraser])
+(def tools [:eraser :color_1 :color_2 :color_3 :color_4])
+(def tool-colors
+  {:eraser  "#113050"
+   :color_1 "#F6CB1D"
+   :color_2 "#48C668"
+   :color_3 "#F44D44"
+   :color_4 "#2D87F2"})
+(def tool-points [nil nil])
 
 (declare render maybe-render open-cell flag-cell)
 
@@ -189,7 +196,8 @@
                     "closed.png" "unreachable.png" "hover.png"
                     "flagged.png" "flagged_classic.png" "flag.png"
                     "btn_retry.png" "btn_reload.png"
-                    "tool_yellow.png" "tool_green.png" "tool_red.png" "tool_blue.png" "tool_eraser.png"])
+                    "tool_eraser.png" "tool_color_1.png" "tool_color_2.png" "tool_color_3.png" "tool_color_4.png"
+                    "tool_eraser_selected.png" "tool_color_1_selected.png" "tool_color_2_selected.png" "tool_color_3_selected.png" "tool_color_4_selected.png"])
         *to-load (atom (count names))]
     (doseq [name names
             :let [img (js/Image.)]]
@@ -281,16 +289,10 @@
     (let [width (* (count tools) cell-size)
           left  (quot (- canvas-w width) 2)]
       (doseq [[i t] (indexed tools)
-              :let [x (+ left (* i cell-size))
-                    y (if (= tool t)
-                        (- canvas-h sprite-size 35)
-                        (- canvas-h sprite-size 15))
-                    img (get images (str "tool_" t ".png"))]]
-        (.drawImage ctx img (- x margin) y sprite-size sprite-size))
-      (set! (.-fillStyle ctx) "#113050")
-      (.fillRect ctx (- left margin) (- canvas-h 35) (+ width (* 2 margin)) 35)
-      (set! (.-fillStyle ctx) "#202122")
-      (.fillRect ctx (- left margin) (- canvas-h 35) (+ width (* 2 margin)) 2))
+              :let [x   (+ left (* i cell-size))
+                    y   (- canvas-h sprite-size 35)
+                    img (get images (str "tool_" t (if (= t tool) "_selected" "") ".png"))]]
+        (.drawImage ctx img (- x margin) (- y margin) sprite-size sprite-size)))
 
     ;; level name
     (let [name (re-find #"^[^ ]+" puzzle)]
@@ -334,7 +336,7 @@
 
     :let [toolbox-w (* (count tools) cell-size)
           toolbox-x (quot (- canvas-w toolbox-w) 2)]
-    (inside? x y toolbox-x (- canvas-h sprite-size) toolbox-w 100)
+    (inside? x y toolbox-x (- canvas-h sprite-size 35) toolbox-w cell-size)
     (let [i (quot (- x toolbox-x) cell-size)
           t (nth tools i)]
       (if (= tool t)
@@ -450,18 +452,12 @@
                      (when tool
                        (let [ctx (.getContext notes "2d")]
                          (set! (.-lineWidth ctx) (case tool :eraser 30 6))
-                         (set! (.-strokeStyle ctx)
-                           (case tool
-                             :yellow "#F6CB1D"
-                             :green  "#48C668"
-                             :red    "#F44D44"
-                             :blue   "#2D87F2"
-                             :eraser "#113050"))
+                         (set! (.-strokeStyle ctx) (get tool-colors tool))
                          (set! (.-lineCap ctx) "round")
                          (set! (.-lineJoin ctx) "round")
                          (set! (.-globalCompositeOperation ctx) (case tool :eraser "destination-out" "source-over"))
-                         (.beginPath ctx)
-                         (.moveTo ctx drag-x drag-y)))
+                         (aset tool-points 0 nil)
+                         (aset tool-points 1 [drag-x drag-y])))
 
                      (let [[l t w h] (flag-area)]
                        (when (inside? x y l t w h margin)
@@ -471,9 +467,20 @@
 
         on-move    (fn [x y]
                      (when (and drag-type tool drag-x drag-y)
-                       (let [ctx (.getContext notes "2d")]
-                         (.quadraticCurveTo ctx drag-x drag-y (/ (+ drag-x x) 2) (/ (+ drag-y y) 2))
-                         (.stroke ctx)))
+                       (let [ctx (.getContext notes "2d")
+                             [x0 y0] (aget tool-points 0)
+                             [x1 y1] (aget tool-points 1)
+                             [x  y ] [x y]]
+                         (when (and x1 y1 (>= (js/Math.hypot (- x x1) (- y y1)) 5))
+                           (when (and (nil? x0) (nil? y0) x1 y1)
+                             (.beginPath ctx)
+                             (.moveTo ctx x1 y1))
+                           (when (and x0 y0 x1 y1)
+                             (.quadraticCurveTo ctx x1 y1 (/ (+ x1 x) 2) (/ (+ y1 y) 2))
+                             #_(.lineTo ctx x y)
+                             (.stroke ctx))
+                           (aset tool-points 0 [x1 y1])
+                           (aset tool-points 1 [x y]))))
                      (set! drag-x x)
                      (set! drag-y y)
                      (request-render))
