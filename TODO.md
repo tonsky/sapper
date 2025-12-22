@@ -1,8 +1,13 @@
+- [ ] Split code into modules
+- [x] Better colors for digits
 - [ ] Pencils/drawing
+  - [x] Basic drawing
+  - [ ] Erase with right mouse
+  - [ ] Mouse down should erase a circle
+  - [ ] Always draw till the current mouse positon
 - [ ] Puzzle in URL
 - [ ] Open animation
 - [ ] Try highlighting cells instead of outline
-- [ ] Draw zero as empty cell
 - [ ] Auto-open when zero
 - [ ] Level select
 - [ ] Save progression
@@ -10,6 +15,7 @@
 - [ ] Game over screen
 - [ ] Expert mode
 - [ ] Setting screen
+- [x] Draw zero as empty cell
 - [x] Outline color matches cell
 - [x] Classic mode/modern mode
 - [x] Colored numbers?
