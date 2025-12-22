@@ -6,7 +6,9 @@
    [sapper.macros :refer [defn-log cond+]]))
 
 (def canvas nil)
+(def ctx nil)
 (def notes nil)
+(def notes-ctx nil)
 (def canvas-w 0)
 (def canvas-h 0)
 (def puzzle)
@@ -36,13 +38,13 @@
 (def drag-x 0)
 (def drag-y 0)
 (def tool nil)
-(def tools [:eraser :color_1 :color_2 :color_3 :color_4])
+(def tools [:eraser :color1 :color2 :color3 :color4])
 (def tool-colors
-  {:eraser  "#113050"
-   :color_1 "#F6CB1D"
-   :color_2 "#48C668"
-   :color_3 "#F44D44"
-   :color_4 "#2D87F2"})
+  {:eraser "#000"
+   :color1 "#F6CB1D"
+   :color2 "#3FC833"
+   :color3 "#F44D44"
+   :color4 "#25D0FF"})
 (def tool-points [nil nil])
 
 (declare render maybe-render open-cell flag-cell)
@@ -179,7 +181,7 @@
 
     (request-render)))
 
-(defn render-text [ctx text]
+(defn render-text [text]
   (set! (.-font ctx) "24px sans-serif")
   (set! (.-fillStyle ctx) "#FFF")
   (set! (.-textAlign ctx) "center")
@@ -196,8 +198,8 @@
                     "closed.png" "unreachable.png" "hover.png"
                     "flagged.png" "flagged_classic.png" "flag.png"
                     "btn_retry.png" "btn_reload.png"
-                    "tool_eraser.png" "tool_color_1.png" "tool_color_2.png" "tool_color_3.png" "tool_color_4.png"
-                    "tool_eraser_selected.png" "tool_color_1_selected.png" "tool_color_2_selected.png" "tool_color_3_selected.png" "tool_color_4_selected.png"])
+                    "tool_eraser.png" "tool_color1.png" "tool_color2.png" "tool_color3.png" "tool_color4.png"
+                    "tool_eraser_selected.png" "tool_color1_selected.png" "tool_color2_selected.png" "tool_color3_selected.png" "tool_color4_selected.png"])
         *to-load (atom (count names))]
     (doseq [name names
             :let [img (js/Image.)]]
@@ -209,7 +211,7 @@
             (maybe-render))))
       (set! (.-src img) (str "i/" name)))))
 
-(defn render-game [ctx]
+(defn render-game []
   (let [[hover-x hover-y] (when (and drag-x drag-y)
                             (field-coords drag-x drag-y))]
     ;; cells
@@ -374,41 +376,38 @@
 
     (set! (.-width canvas) dw)
     (set! (.-height canvas) dh)
-    (let [ctx (.getContext canvas "2d")]
-      (.reset ctx)
-      (.scale ctx canvas-scale canvas-scale))
+    (.resetTransform ctx)
+    (.scale ctx canvas-scale canvas-scale)
 
     (set! (.-width notes) dw)
     (set! (.-height notes) dh)
-    (let [ctx (.getContext notes "2d")]
-      (.reset ctx)
-      (.scale ctx canvas-scale canvas-scale))
+    (.resetTransform notes-ctx)
+    (.scale notes-ctx canvas-scale canvas-scale)
 
     (set! grid-x (-> canvas-w (- grid-w) (quot 2)))
-    (set! grid-y (-> canvas-h (- grid-h) (quot 2)))
+    (set! grid-y (-> canvas-h (- 100) (- grid-h) (quot 2)))
     (request-render)))
 
 (defn-log render []
-  (let [ctx (.getContext canvas "2d")]
-    (.clearRect ctx 0 0 canvas-w canvas-h)
+  (.clearRect ctx 0 0 canvas-w canvas-h)
 
-    ;; render screen
-    (case screen
-      :loading   (render-text ctx "Loading resources...")
-      :game      (render-game ctx)
-      :game-over (render-text ctx "Game Over")
-      :victory   (render-text ctx "Congratulations! You won!"))
+  ;; render screen
+  (case screen
+    :loading   (render-text "Loading resources...")
+    :game      (render-game)
+    :game-over (render-text "Game Over")
+    :victory   (render-text "Congratulations! You won!"))
 
-    ;; buttons
-    (when-some [img (get images "btn_retry.png")]
-      (.drawImage ctx img  (- canvas-w 175) 0 sprite-size sprite-size))
-    (when-some [img (get images "btn_reload.png")]
-      (.drawImage ctx img  (- canvas-w 100) 0 sprite-size sprite-size))
+  ;; buttons
+  (when-some [img (get images "btn_retry.png")]
+    (.drawImage ctx img  (- canvas-w 175) 0 sprite-size sprite-size))
+  (when-some [img (get images "btn_reload.png")]
+    (.drawImage ctx img  (- canvas-w 100) 0 sprite-size sprite-size))
 
-    ;; viewport size
-    (set! (.-font ctx) "12px sans-serif")
-    (set! (.-fillStyle ctx) "#284E6D")
-    (.fillText ctx (str canvas-w "×" canvas-h "@" canvas-scale) 10 20)))
+  ;; viewport size
+  (set! (.-font ctx) "12px sans-serif")
+  (set! (.-fillStyle ctx) "#284E6D")
+  (.fillText ctx (str canvas-w "×" canvas-h "@" canvas-scale) 10 20))
 
 (defn maybe-render []
   (when render-requested
@@ -440,8 +439,10 @@
   (add-event-listener js/window "resize" on-resize)
 
   ;; Setup canvas
-  (set! canvas (.querySelector js/document "#canvas"))
-  (set! notes (.querySelector js/document "#notes"))
+  (set! canvas     (.querySelector js/document "#canvas"))
+  (set! ctx (.getContext canvas "2d"))
+  (set! notes      (.querySelector js/document "#notes"))
+  (set! notes-ctx  (.getContext notes "2d"))
   (on-resize)
 
   ;; Touch/click/drag listeners
@@ -450,14 +451,13 @@
                      (set! drag-x x)
                      (set! drag-y y)
                      (when tool
-                       (let [ctx (.getContext notes "2d")]
-                         (set! (.-lineWidth ctx) (case tool :eraser 30 6))
-                         (set! (.-strokeStyle ctx) (get tool-colors tool))
-                         (set! (.-lineCap ctx) "round")
-                         (set! (.-lineJoin ctx) "round")
-                         (set! (.-globalCompositeOperation ctx) (case tool :eraser "destination-out" "source-over"))
+                         (set! (.-lineWidth notes-ctx) (case tool :eraser 30 6))
+                         (set! (.-strokeStyle notes-ctx) (get tool-colors tool))
+                         (set! (.-lineCap notes-ctx) "round")
+                         (set! (.-lineJoin notes-ctx) "round")
+                         (set! (.-globalCompositeOperation notes-ctx) (case tool :eraser "destination-out" "source-over"))
                          (aset tool-points 0 nil)
-                         (aset tool-points 1 [drag-x drag-y])))
+                         (aset tool-points 1 [drag-x drag-y]))
 
                      (let [[l t w h] (flag-area)]
                        (when (inside? x y l t w h margin)
@@ -467,18 +467,17 @@
 
         on-move    (fn [x y]
                      (when (and drag-type tool drag-x drag-y)
-                       (let [ctx (.getContext notes "2d")
-                             [x0 y0] (aget tool-points 0)
+                       (let [[x0 y0] (aget tool-points 0)
                              [x1 y1] (aget tool-points 1)
                              [x  y ] [x y]]
-                         (when (and x1 y1 (>= (js/Math.hypot (- x x1) (- y y1)) 5))
+                         (when (and x1 y1 (>= (js/Math.hypot (- x x1) (- y y1)) 15))
                            (when (and (nil? x0) (nil? y0) x1 y1)
-                             (.beginPath ctx)
-                             (.moveTo ctx x1 y1))
+                             (.beginPath notes-ctx)
+                             (.moveTo notes-ctx x1 y1))
                            (when (and x0 y0 x1 y1)
-                             (.quadraticCurveTo ctx x1 y1 (/ (+ x1 x) 2) (/ (+ y1 y) 2))
-                             #_(.lineTo ctx x y)
-                             (.stroke ctx))
+                             (.quadraticCurveTo notes-ctx x1 y1 (/ (+ x1 x) 2) (/ (+ y1 y) 2))
+                             #_(.lineTo notes-ctx x y)
+                             (.stroke notes-ctx))
                            (aset tool-points 0 [x1 y1])
                            (aset tool-points 1 [x y]))))
                      (set! drag-x x)
@@ -567,7 +566,9 @@
 
   ;; Render
   (set! puzzle
-    (rand-nth puzzles/puzzles)
+    (->> puzzles/puzzles
+      (filter #(re-find #"8x8" %))
+      (rand-nth))
     #_"OffqqoofffqoooqfoOfOffOfo"
     #_"ffoqfffOfooqQfoOoqOOqOqffffOfoqoffqO"
     #_"qffqfOfffoqoffOOfOoqOfooofqffffofOqOfofoOfqfqqooo"
