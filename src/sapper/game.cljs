@@ -296,6 +296,14 @@
                     img (get images (str "tool_" t (if (= t tool) "_selected" "") ".png"))]]
         (.drawImage ctx img (- x margin) (- y margin) sprite-size sprite-size)))
 
+    ;; Eraser cursor
+    (when (and (= :eraser tool) drag-x drag-y)
+      (set! (.-strokeStyle ctx) "#FFFFFF20")
+      (set! (.-lineWidth ctx) 1)
+      (.beginPath ctx)
+      (.arc ctx drag-x drag-y 20 0 (* 2 js/Math.PI))
+      (.stroke ctx))
+
     ;; level name
     (let [name (re-find #"^[^ ]+" puzzle)]
       (set! (.-font ctx) "12px sans-serif")
@@ -324,42 +332,6 @@
               (update-field))
       :else (set! screen :game-over))
     (request-render)))
-
-(defn-log on-click [x y action]
-  (cond+
-    (inside? x y grid-x grid-y grid-w grid-h)
-    (let [[gx gy]             (field-coords x y)
-          key                 (key gx gy)
-          {:keys [mine open]} (get-cell gx gy)]
-      #_(println "on-grid-click" gx gy action mine open)
-      (case action
-        :primary   (open-cell gx gy)
-        :secondary (flag-cell gx gy)))
-
-    :let [toolbox-w (* (count tools) cell-size)
-          toolbox-x (quot (- canvas-w toolbox-w) 2)]
-    (inside? x y toolbox-x (- canvas-h sprite-size 35) toolbox-w cell-size)
-    (let [i (quot (- x toolbox-x) cell-size)
-          t (nth tools i)]
-      (if (= tool t)
-        (set! tool nil)
-        (set! tool t)))
-
-    (not= :primary action)
-    :noop
-
-    ;; retry button
-    (inside? x y (- canvas-w 150) 25 50 50)
-    (load-game puzzle)
-
-    ;; reload button
-    (inside? x y (- canvas-w 75) 25 50 50)
-    (.reload (.-location js/window))
-
-    :else
-    (do
-      (set! outline-x nil)
-      (set! outline-y nil))))
 
 (defn on-resize []
   (let [w      (.-innerWidth js/window)
@@ -438,6 +410,32 @@
   ;; Resize listener
   (add-event-listener js/window "resize" on-resize)
 
+  ;; Keyboard shortcuts for tools
+  (add-event-listener js/window "keydown"
+    (fn [e]
+      (let [key (.-key e)]
+        (cond
+          (re-matches #"[1-4]" key)
+          (let [i (- (js/Number key) 1)
+                t (nth tools (inc i))]
+            (if (= tool t)
+              (set! tool nil)
+              (set! tool t))
+            (request-render))
+
+          (= "e" key)
+          (do
+            (if (= :eraser tool)
+              (set! tool nil)
+              (set! tool :eraser))
+            (request-render))
+
+
+          (= key "Escape")
+          (do
+            (set! tool nil)
+            (request-render))))))
+
   ;; Setup canvas
   (set! canvas     (.querySelector js/document "#canvas"))
   (set! ctx (.getContext canvas "2d"))
@@ -450,8 +448,10 @@
                      (set! drag-type type)
                      (set! drag-x x)
                      (set! drag-y y)
-                     (when tool
-                         (set! (.-lineWidth notes-ctx) (case tool :eraser 30 6))
+                     (cond+
+                       tool
+                       (do
+                         (set! (.-lineWidth notes-ctx) (case tool :eraser 40 6))
                          (set! (.-strokeStyle notes-ctx) (get tool-colors tool))
                          (set! (.-lineCap notes-ctx) "round")
                          (set! (.-lineJoin notes-ctx) "round")
@@ -459,8 +459,9 @@
                          (aset tool-points 0 nil)
                          (aset tool-points 1 [drag-x drag-y]))
 
-                     (let [[l t w h] (flag-area)]
-                       (when (inside? x y l t w h margin)
+                       :let [[l t w h] (flag-area)]
+                       (inside? x y l t w h margin)
+                       (do
                          (set! dragging-flag true)
                          (set! tool nil)))
                      (request-render))
@@ -470,7 +471,7 @@
                        (let [[x0 y0] (aget tool-points 0)
                              [x1 y1] (aget tool-points 1)
                              [x  y ] [x y]]
-                         (when (and x1 y1 (>= (js/Math.hypot (- x x1) (- y y1)) 15))
+                         (when (and x1 y1 (>= (js/Math.hypot (- x x1) (- y y1)) 5))
                            (when (and (nil? x0) (nil? y0) x1 y1)
                              (.beginPath notes-ctx)
                              (.moveTo notes-ctx x1 y1))
@@ -488,7 +489,9 @@
                      (set! drag-type nil)
                      (set! drag-x nil)
                      (set! drag-y nil)
-                     (let [[gx gy] (field-coords x y)]
+                     (let [[gx gy] (field-coords x y)
+                           toolbox-w (* (count tools) cell-size)
+                           toolbox-x (quot (- canvas-w toolbox-w) 2)]
                        (cond
                          ;; drop flag
                          dragging-flag
@@ -499,9 +502,30 @@
                                  (flag-cell gx gy))))
                            (set! dragging-flag false))
 
+                         ;; toolbox
+                         (inside? x y toolbox-x (- canvas-h sprite-size 35) toolbox-w cell-size)
+                         (let [i (quot (- x toolbox-x) cell-size)
+                               t (nth tools i)]
+                           (if (= tool t)
+                             (set! tool nil)
+                             (set! tool t)))
+
+                         tool
+                         :noop
+
+                         ;; retry button
+                         (inside? x y (- canvas-w 150) 25 50 50)
+                         (load-game puzzle)
+
+                         ;; reload button
+                         (inside? x y (- canvas-w 75) 25 50 50)
+                         (.reload (.-location js/window))
+
                          ;; end outside field
                          (not (and gx gy))
-                         (on-click x y action)
+                         (do
+                           (set! outline-x nil)
+                           (set! outline-y nil))
 
                          ;; second click on outlined cell
                          (and (= gx outline-x) (= gy outline-y))
@@ -517,7 +541,12 @@
 
                          ;; click on closed cell
                          :else
-                         (on-click x y action)))
+                         (let [key                 (key gx gy)
+                               {:keys [mine open]} (get-cell gx gy)]
+                           #_(println "on-grid-click" gx gy action mine open)
+                           (case action
+                             :primary   (open-cell gx gy)
+                             :secondary (flag-cell gx gy)))))
                      (request-render))]
 
     ;; Touch events
@@ -562,7 +591,7 @@
       (fn [e]
         (.preventDefault e)
         (let [[x y] (rel-coords e)]
-          (on-click x y :secondary)))))
+          (on-end x y :secondary)))))
 
   ;; Render
   (set! puzzle
