@@ -111,7 +111,7 @@
 (defn flag-area []
   (let [flags' (cond-> flags dragging-flag dec)]
     (when (pos? flags')
-      (let [total-w  (+ (* (dec flags') flag-gap) cell-size)]
+      (let [total-w  (+ (* (dec flags') flag-gap) cell-size -5)]
         [(-> canvas-w (- total-w) (quot 2))
          (+ grid-y grid-h 30)
          total-w
@@ -140,7 +140,8 @@
   (when (= 0 flags)
     (set! screen :victory)))
 
-(defn-log load-game []
+(defn-log load-game [s]
+  (set! puzzle s)
   (let [code     (re-find #"[foqFOQ]+" puzzle)
         len      (count code)
         *to-open (atom [])]
@@ -182,6 +183,7 @@
     (request-render)))
 
 (defn render-text [text]
+  (.clearRect notes-ctx 0 0 canvas-w canvas-h)
   (set! (.-font ctx) "24px sans-serif")
   (set! (.-fillStyle ctx) "#FFF")
   (set! (.-textAlign ctx) "center")
@@ -207,7 +209,7 @@
         (fn []
           (assoc! images name img)
           (when (= 0 (swap! *to-load dec))
-            (load-game)
+            (load-game puzzle)
             (maybe-render))))
       (set! (.-src img) (str "i/" name)))))
 
@@ -243,15 +245,15 @@
                       mine          "#E15757"
                       solved        "#73A2C9"
                       (= "q" label) "#73A2C9"
-                      (= "0" label) "#FFFFFF"
-                      (= "1" label) "#FF63C1"
-                      (= "2" label) "#3EA8FF"
-                      (= "3" label) "#E15757"
-                      (= "4" label) "#FFEC41"
-                      (= "5" label) "#33FB37"
-                      (= "6" label) "#6365FF"
-                      (= "7" label) "#63FFF7"
-                      (= "8" label) "#FFFFFF"
+                      (= "0" label) "#006073"
+                      (= "1" label) "#0A9496"
+                      (= "2" label) "#95D2BD"
+                      (= "3" label) "#E9D8A6"
+                      (= "4" label) "#EE9C02"
+                      (= "5" label) "#CA6702"
+                      (= "6" label) "#BC3E02"
+                      (= "7" label) "#AF2012"
+                      (= "8" label) "#9B2226"
                       :else         #"73A2C9")]
         (set! (.-strokeStyle ctx) color)
         (set! (.-lineWidth ctx) 3)
@@ -292,7 +294,7 @@
           left  (quot (- canvas-w width) 2)]
       (doseq [[i t] (indexed tools)
               :let [x   (+ left (* i cell-size))
-                    y   (- canvas-h sprite-size 35)
+                    y   (+ grid-y grid-h 115)
                     img (get images (str "tool_" t (if (= t tool) "_selected" "") ".png"))]]
         (.drawImage ctx img (- x margin) (- y margin) sprite-size sprite-size)))
 
@@ -338,7 +340,7 @@
         h      (.-innerHeight js/window)
         dw     (* w dpi)
         dh     (* h dpi)
-        scales [4 3 2 1.75 1.5 1.25 1 0.75 0.6666667 0.5 0.3333333 0.25]
+        scales [4 3 2.5 2 1.75 1.5 1.25 1 0.75 0.6666667 0.5 0.3333333 0.25]
         sx     (some #(when (<= (* % 560) dw) %) scales)
         sy     (some #(when (<= (* % 900) dh) %) scales)
         scale  (min sx sy)]
@@ -379,6 +381,7 @@
   ;; viewport size
   (set! (.-font ctx) "12px sans-serif")
   (set! (.-fillStyle ctx) "#284E6D")
+  (set! (.-textAlign ctx) "left")
   (.fillText ctx (str canvas-w "×" canvas-h "@" canvas-scale) 10 20))
 
 (defn maybe-render []
@@ -430,6 +433,8 @@
               (set! tool :eraser))
             (request-render))
 
+          (= "r" key)
+          (load-game puzzle)
 
           (= key "Escape")
           (do
@@ -437,10 +442,10 @@
             (request-render))))))
 
   ;; Setup canvas
-  (set! canvas     (.querySelector js/document "#canvas"))
-  (set! ctx (.getContext canvas "2d"))
-  (set! notes      (.querySelector js/document "#notes"))
-  (set! notes-ctx  (.getContext notes "2d"))
+  (set! canvas    (.querySelector js/document "#canvas"))
+  (set! ctx       (.getContext canvas "2d"))
+  (set! notes     (.querySelector js/document "#notes"))
+  (set! notes-ctx (.getContext notes "2d"))
   (on-resize)
 
   ;; Touch/click/drag listeners
@@ -503,7 +508,7 @@
                            (set! dragging-flag false))
 
                          ;; toolbox
-                         (inside? x y toolbox-x (- canvas-h sprite-size 35) toolbox-w cell-size)
+                         (inside? x y toolbox-x (+ grid-y grid-h 115) toolbox-w cell-size)
                          (let [i (quot (- x toolbox-x) cell-size)
                                t (nth tools i)]
                            (if (= tool t)
