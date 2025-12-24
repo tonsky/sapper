@@ -124,17 +124,26 @@
 (defn-log update-field []
   (doseq [[key cell] field
           :let [[x y] (parse-key key)
-                {:keys [mine label]} cell
+                {:keys [mine label solved]} cell
                 nbs   (map
                         (fn [[x y]] (get-cell x y))
-                        (neighbours x y))]]
+                        (neighbours x y))
+                solved' (every? :open nbs)]]
     (when (and (not= "q" label) (not mine))
-      (assoc! cell :label (cond->> nbs
-                            true   (filter :mine)
-                            modern (remove :open)
-                            true   (count)
-                            true   (str))))
-    (assoc! cell :solved (every? :open nbs))
+      (let [label' (cond->> nbs
+                     true   (filter :mine)
+                     modern (remove :open)
+                     true   (count)
+                     true   (str))]
+        (assoc! cell :label label')
+        (when (and
+                (not solved)
+                solved'
+                (= outline-x x)
+                (= outline-y y))
+          (set! outline-x nil)
+          (set! outline-y nil))))
+    (assoc! cell :solved solved')
     (assoc! cell :reachable (some #(and (:open %) (not (:mine %)) (not= "q" (:label %))) nbs)))
   (set! flags (->> field vals (filter :mine) (remove :open) (count)))
   (when (= 0 flags)
@@ -318,11 +327,13 @@
         {:keys [mine open]} (get-cell gx gy)]
     (cond
       open  :noop
-      mine  (set! screen :game-over)
+      mine  (do
+              (set! screen :game-over)
+              (request-render))
       :else (do
               (assoc! (get field key) :open true)
-              (update-field)))
-    (request-render)))
+              (update-field)
+              (request-render)))))
 
 (defn flag-cell [gx gy]
   (let [key                 (key gx gy)
