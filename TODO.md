@@ -1,5 +1,5 @@
+- [ ] Drag flag from the cell
 - [ ] Split code into modules
-- [x] Better colors for digits
 - [ ] Pencils/drawing
   - [x] Basic drawing
   - [ ] Erase with right mouse
@@ -15,6 +15,11 @@
 - [ ] Game over screen
 - [ ] Expert mode
 - [ ] Setting screen
+- [x] Remove unreachable
+- [x] Auto-expand flag-gap
+- [x] Key shortcuts don't trigger with modifiers
+- [x] Flagging does not trigger checking
+- [x] Better colors for digits
 - [x] Draw zero as empty cell
 - [x] Outline color matches cell
 - [x] Classic mode/modern mode

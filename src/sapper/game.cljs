@@ -1,37 +1,28 @@
 (ns sapper.game
   (:require
    [clojure.string :as str]
+   [sapper.core :as core :refer [canvas ctx notes notes-ctx canvas-w canvas-h canvas-scale dpi images]]
+   [sapper.level-select :as level-select]
    [sapper.puzzles :as puzzles])
   (:require-macros
    [sapper.macros :refer [defn-log cond+]]))
 
-(def canvas nil)
-(def ctx nil)
-(def notes nil)
-(def notes-ctx nil)
-(def canvas-w 0)
-(def canvas-h 0)
 (def puzzle)
 (def modern true)
-(def dpi (or (.-devicePixelRatio js/window) 1))
-(def canvas-scale 1)
 (def cell-size 70)
 (def sprite-size 100)
 (def margin (-> sprite-size (- cell-size) (/ 2)))
 (def field {})
 (def flags 0)
-(def flag-gap 20)
 (def field-w 0)
 (def field-h 0)
 (def grid-x 0)
 (def grid-y 0)
 (def grid-w 0)
 (def grid-h 0)
-(def images {})
 (def outline-x nil)
 (def outline-y nil)
 (def screen :loading)
-(def render-requested false)
 
 (def dragging-flag false)
 (def drag-type nil)
@@ -57,8 +48,6 @@
     #(do (f %) (maybe-render))
     opts))
 
-(defn request-render []
-  (set! render-requested true))
 
 (defn neighbours [x y]
   (concat
@@ -89,14 +78,6 @@
 (defn get-cell [x y]
   (get field (key x y)))
 
-(defn inside? [x y l t w h margin]
-  (let [margin (or margin 0)]
-    (and
-      (<= (- l margin) x)
-      (< x (+ l w margin))
-      (<= (- t margin) y)
-      (< y (+ t h margin)))))
-
 (defn rel-coords [e]
   (let [rect (.getBoundingClientRect canvas)
         x    (-> (.-clientX e) (- (.-left rect)) (* dpi) (/ canvas-scale) js/Math.round)
@@ -104,22 +85,22 @@
     [x y]))
 
 (defn field-coords [x y]
-  (when (inside? x y grid-x grid-y grid-w grid-h)
+  (when (core/inside? x y grid-x grid-y grid-w grid-h)
     [(quot (- x grid-x) cell-size)
      (quot (- y grid-y) cell-size)]))
 
 (defn flag-area []
   (let [flags' (cond-> flags dragging-flag dec)]
     (when (pos? flags')
-      (let [total-w  (+ (* (dec flags') flag-gap) cell-size -5)]
+      (let [max-flags 26
+            flag-gap  (+ 20 (-> max-flags (- flags') (/ max-flags) (* 5) (max 0)))
+            total-w   (+ (* (dec flags') flag-gap) cell-size -5)]
         [(-> canvas-w (- total-w) (quot 2))
          (+ grid-y grid-h 30)
          total-w
          cell-size
-         flags']))))
-
-(defn indexed [seq]
-  (map vector (range) seq))
+         flags'
+         flag-gap]))))
 
 (defn processed [cell]
   (or
@@ -149,13 +130,12 @@
             (= outline-x x)
             (= outline-y y))
       (set! outline-x nil)
-      (set! outline-y nil))
-    (assoc! cell :reachable (some #(and (:open %) (not (:mine %)) (not= "q" (:label %))) nbs)))
+      (set! outline-y nil)))
   (set! flags (- (->> field vals (filter :mine) count)
                 (->> field vals (filter :flagged) (count))))
   (when (->> field vals (every? processed))
     (set! screen :victory))
-  (request-render))
+  (core/request-render))
 
 (defn-log load-game [s]
   (set! puzzle s)
@@ -187,7 +167,7 @@
           ("O" "Q") (swap! *to-open conj #(open-cell x y))
           nil)))
 
-    (doseq [[i f] (indexed (shuffle @*to-open))]
+    (doseq [[i f] (core/indexed (shuffle @*to-open))]
       (set-timeout (* i 50) f))
 
     (update-field)
@@ -197,7 +177,7 @@
     (.clearRect (.getContext notes "2d") 0 0 canvas-w canvas-h)
     (set! tool nil)
 
-    (request-render)))
+    (core/request-render)))
 
 (defn render-text [text]
   (.clearRect notes-ctx 0 0 canvas-w canvas-h)
@@ -207,45 +187,18 @@
   (set! (.-textBaseline ctx) "middle")
   (.fillText ctx text (/ canvas-w 2) (/ canvas-h 2)))
 
-(defn-log load-resources [cb]
-  (let [names    (concat
-                   (for [i (range 9)]
-                     (str i ".png"))
-                   (for [i (range 9)]
-                     (str i "_solved.png"))
-                   (for [i (range 1 9)]
-                     (str "-" i ".png"))
-                   (for [i (range 8)]
-                     (str "error_" i ".png"))
-                   ["q.png" "q_solved.png"
-                    "closed.png" "unreachable.png" "hover.png"
-                    "flagged.png" "flagged_classic.png" "flag.png"
-                    "btn_retry.png" "btn_reload.png"
-                    "tool_eraser.png" "tool_color1.png" "tool_color2.png" "tool_color3.png" "tool_color4.png"
-                    "tool_eraser_selected.png" "tool_color1_selected.png" "tool_color2_selected.png" "tool_color3_selected.png" "tool_color4_selected.png"])
-        *to-load (atom (count names))]
-    (doseq [name names
-            :let [img (js/Image.)]]
-      (set! (.-onload img)
-        (fn []
-          (assoc! images name img)
-          (when (= 0 (swap! *to-load dec))
-            (cb))))
-      (set! (.-src img) (str "i/" name)))))
-
 (defn render-game []
   (let [[hover-x hover-y] (when (and drag-x drag-y)
                             (field-coords drag-x drag-y))]
     ;; cells
     (doseq [y (range field-w)
             x (range field-h)]
-      (let [{:keys [mine flagged open label solved reachable]} (get-cell x y)
+      (let [{:keys [mine flagged open label solved]} (get-cell x y)
             err  (and label (or (str/starts-with? label "-")
                               (str/starts-with? label "error_")))
             name (cond
                    (and (not tool) (not open) (not flagged) (= x hover-x) (= y hover-y)) "hover.png"
-                   flagged                          (if modern "flagged.png" "flagged_classic.png")
-                   (and (not open) (not reachable)) "unreachable.png"
+                   flagged                          "flagged.png"
                    (not open)                       "closed.png"
                    err                              (str label ".png")
                    (and open solved)                (str label "_solved.png")
@@ -290,7 +243,7 @@
         (.stroke ctx)))
 
     ;; Flags
-    (when-some [[l t w h flags'] (flag-area)]
+    (when-some [[l t w h flags' flag-gap] (flag-area)]
       (let [flag-img (get images "flag.png")]
         (set! (.-fillStyle ctx) "#082848")
         (.beginPath ctx)
@@ -315,7 +268,7 @@
     ;; Tools
     (let [width (* (count tools) cell-size)
           left  (quot (- canvas-w width) 2)]
-      (doseq [[i t] (indexed tools)
+      (doseq [[i t] (core/indexed tools)
               :let [x   (+ left (* i cell-size))
                     y   (+ grid-y grid-h 115)
                     img (get images (str "tool_" t (if (= t tool) "_selected" "") ".png"))]]
@@ -331,10 +284,10 @@
 
     ;; level name
     (let [name (re-find #"^[^ ]+" puzzle)]
-      (set! (.-font ctx) "12px sans-serif")
+      (set! (.-font ctx) "10px sans-serif")
       (set! (.-textAlign ctx) "left")
       (set! (.-fillStyle ctx) "#284E6D")
-      (.fillText ctx name 10 35))))
+      (.fillText ctx name 13 35))))
 
 (defn open-cell [gx gy]
   (let [key                         (key gx gy)
@@ -367,41 +320,21 @@
         (update-field)))))
 
 (defn on-resize []
-  (let [w      (.-innerWidth js/window)
-        h      (.-innerHeight js/window)
-        dw     (* w dpi)
-        dh     (* h dpi)
-        scales [4 3 2.5 2 1.75 1.5 1.25 1 0.75 0.6666667 0.5 0.3333333 0.25]
-        sx     (some #(when (<= (* % 560) dw) %) scales)
-        sy     (some #(when (<= (* % 900) dh) %) scales)
-        scale  (min sx sy)]
-    (set! canvas-w (-> dw (/ scale) (/ 2) js/Math.floor (* 2)))
-    (set! canvas-h (-> dh (/ scale) (/ 2) js/Math.floor (* 2)))
-    (set! canvas-scale scale)
-
-    (set! (.-width canvas) dw)
-    (set! (.-height canvas) dh)
-    (.resetTransform ctx)
-    (.scale ctx canvas-scale canvas-scale)
-
-    (set! (.-width notes) dw)
-    (set! (.-height notes) dh)
-    (.resetTransform notes-ctx)
-    (.scale notes-ctx canvas-scale canvas-scale)
-
-    (set! grid-x (-> canvas-w (- grid-w) (quot 2)))
-    (set! grid-y (-> canvas-h (- 100) (- grid-h) (quot 2)))
-    (request-render)))
+  (core/on-resize)
+  (set! grid-x (-> canvas-w (- grid-w) (quot 2)))
+  (set! grid-y (-> canvas-h (- 100) (- grid-h) (quot 2)))
+  (core/request-render))
 
 (defn-log render []
   (.clearRect ctx 0 0 canvas-w canvas-h)
 
   ;; render screen
   (case screen
-    :loading   (render-text "Loading resources...")
-    :game      (render-game)
-    :game-over (render-text "Game Over")
-    :victory   (render-text "Congratulations! You won!"))
+    :loading      (render-text "Loading resources...")
+    :level-select (level-select/render)
+    :game         (render-game)
+    :game-over    (render-text "Game Over")
+    :victory      (render-text "Congratulations! You won!"))
 
   ;; buttons
   (when-some [img (get images "btn_retry.png")]
@@ -410,17 +343,26 @@
     (.drawImage ctx img  (- canvas-w 100) 0 sprite-size sprite-size))
 
   ;; viewport size
-  (set! (.-font ctx) "12px sans-serif")
+  (set! (.-font ctx) "10px sans-serif")
   (set! (.-fillStyle ctx) "#284E6D")
   (set! (.-textAlign ctx) "left")
-  (.fillText ctx (str canvas-w "×" canvas-h "@" canvas-scale) 10 20))
+  (.fillText ctx (str canvas-w "×" canvas-h "@" canvas-scale) 13 23)
+
+  (let [[l t w h] core/safe-area]
+    (set! (.-strokeStyle ctx) "#2e4d6f")
+    (set! (.-lineWidth ctx) 1)
+    (.beginPath ctx)
+    (.roundRect ctx l t w h 10)
+    (.stroke ctx)))
 
 (defn maybe-render []
-  (when render-requested
-    (set! render-requested false)
+  (when core/*render-requested
+    (reset! core/*render-requested false)
     (render)))
 
 (defn on-load [_e]
+  (println "game/on-load")
+
   ;; Prevent all scrolling and rubber band effect
   (.addEventListener js/document "touchmove"
     (fn [e]
@@ -447,7 +389,8 @@
   ;; Keyboard shortcuts for tools
   (add-event-listener js/window "keydown"
     (fn [e]
-      (let [key (.-key e)]
+      (let [key (.-key e)
+            mod (or (.-altKey e) (.-ctrlKey e) (.-metaKey e) (.-shiftKey e))]
         (cond
           (re-matches #"[1-4]" key)
           (let [i (- (js/Number key) 1)
@@ -455,29 +398,22 @@
             (if (= tool t)
               (set! tool nil)
               (set! tool t))
-            (request-render))
+            (core/request-render))
 
-          (= "e" key)
+          (and (= "e" key) (not mod))
           (do
             (if (= :eraser tool)
               (set! tool nil)
               (set! tool :eraser))
-            (request-render))
+            (core/request-render))
 
-          (= "r" key)
+          (and (= "r" key) (not mod))
           (load-game puzzle)
 
-          (= key "Escape")
+          (and (= "Escape" key) (not mod))
           (do
             (set! tool nil)
-            (request-render))))))
-
-  ;; Setup canvas
-  (set! canvas    (.querySelector js/document "#canvas"))
-  (set! ctx       (.getContext canvas "2d"))
-  (set! notes     (.querySelector js/document "#notes"))
-  (set! notes-ctx (.getContext notes "2d"))
-  (on-resize)
+            (core/request-render))))))
 
   ;; Touch/click/drag listeners
   (let [on-start   (fn [x y type]
@@ -496,11 +432,11 @@
                          (aset tool-points 1 [drag-x drag-y]))
 
                        :let [[l t w h] (flag-area)]
-                       (inside? x y l t w h margin)
+                       (core/inside? x y l t w h margin)
                        (do
                          (set! dragging-flag true)
                          (set! tool nil)))
-                     (request-render))
+                     (core/request-render))
 
         on-move    (fn [x y]
                      (when (and drag-type tool drag-x drag-y)
@@ -519,7 +455,7 @@
                            (aset tool-points 1 [x y]))))
                      (set! drag-x x)
                      (set! drag-y y)
-                     (request-render))
+                     (core/request-render))
 
         on-end     (fn [x y action]
                      (set! drag-type nil)
@@ -538,7 +474,7 @@
                            (set! dragging-flag false))
 
                          ;; toolbox
-                         (inside? x y toolbox-x (+ grid-y grid-h 115) toolbox-w cell-size)
+                         (core/inside? x y toolbox-x (+ grid-y grid-h 115) toolbox-w cell-size)
                          (let [i (quot (- x toolbox-x) cell-size)
                                t (nth tools i)]
                            (if (= tool t)
@@ -549,11 +485,11 @@
                          :noop
 
                          ;; retry button
-                         (inside? x y (- canvas-w 150) 25 50 50)
+                         (core/inside? x y (- canvas-w 150) 25 50 50)
                          (load-game puzzle)
 
                          ;; reload button
-                         (inside? x y (- canvas-w 75) 25 50 50)
+                         (core/inside? x y (- canvas-w 75) 25 50 50)
                          (.reload (.-location js/window))
 
                          ;; end outside field
@@ -582,7 +518,7 @@
                            (case action
                              :primary   (open-cell gx gy)
                              :secondary (flag-cell gx gy)))))
-                     (request-render))]
+                     (core/request-render))]
 
     ;; Touch events
     (add-event-listener canvas "touchstart"
@@ -600,8 +536,11 @@
     (add-event-listener canvas "touchend"
       (fn [e]
         (.preventDefault e)
-        (let [[x y] (rel-coords (aget (.-changedTouches e) 0))]
-          (on-end x y :primary))))
+        (let [[x y] (rel-coords (aget (.-changedTouches e) 0))
+              e'    {:event "mouseup", :x x, :y y}]
+          (case screen
+            :level-select (level-select/on-event e')
+            #_else        (on-end x y :primary)))))
 
     ;; Mouse events
     (add-event-listener canvas "mousedown"
@@ -619,8 +558,11 @@
     (add-event-listener canvas "mouseup"
       (fn [e]
         (when (= 0 (.-button e))
-          (let [[x y] (rel-coords e)]
-            (on-end x y :primary)))))
+          (let [[x y] (rel-coords e)
+                e'    {:event "mouseup", :x x, :y y}]
+            (case screen
+              :level-select (level-select/on-event e' canvas-w canvas-h)
+              #_else        (on-end x y :primary))))))
 
     (add-event-listener canvas "contextmenu"
       (fn [e]
@@ -631,7 +573,7 @@
   ;; Render
   (set! puzzle
     (->> puzzles/puzzles
-      (filter #(re-find #"5x5" %))
+      (filter #(re-find #"8x8" %))
       (rand-nth))
     #_"[V]5x5-10-2017D fooOqffooofofofffqqoOfoqf   2x2,1x9,-2x1"
     #_"OffqqoofffqoooqfoOfOffOfo"
@@ -642,8 +584,10 @@
     #_"OFFQOOOQQFFQFOOQOQOFFOFOQofqoOOffffOffqfqooofoOoOofqffoqfffffOfq"
     #_"OffooOfOqffOqfoqqOOqfOfOqqofOqfoffqoooofQqofofoffqfooqfqfffffoff"
     #_"OffOfofqofqqfQfOOqoOoqOfofOfoffffffqoqoqOfOfffqooqOOfqfOfOfQfoqf")
-  (load-resources #(do
-                     (load-game puzzle)
-                     (maybe-render))))
+  (core/load-resources #(do
+                          (load-game puzzle)
+                          (set! screen :game)
+                          #_(set! screen :level-select)
+                          (render))))
 
 (add-event-listener js/window "load" on-load)
