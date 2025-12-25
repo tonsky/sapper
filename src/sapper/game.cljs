@@ -121,6 +121,11 @@
 (defn indexed [seq]
   (map vector (range) seq))
 
+(defn processed [cell]
+  (or
+    (:flagged cell)
+    (:open cell)))
+
 (defn-log update-field []
   (doseq [[key cell] field
           :let [[x y] (parse-key key)
@@ -128,26 +133,29 @@
                 nbs   (map
                         (fn [[x y]] (get-cell x y))
                         (neighbours x y))
-                solved' (every? :open nbs)]]
+                solved' (every? processed nbs)]]
     (when (and (not= "q" label) (not mine))
-      (let [label' (cond->> nbs
-                     true   (filter :mine)
-                     modern (remove :open)
-                     true   (count)
-                     true   (str))]
-        (assoc! cell :label label')
-        (when (and
-                (not solved)
-                solved'
-                (= outline-x x)
-                (= outline-y y))
-          (set! outline-x nil)
-          (set! outline-y nil))))
+      (let [mines  (count (filter :mine nbs))
+            flags  (count (filter :flagged nbs))
+            label' (cond
+                     modern          (str (- mines flags))
+                     (> flags mines) (str "error_" mines)
+                     :else           (str mines))]
+        (assoc! cell :label label')))
     (assoc! cell :solved solved')
+    (when (and
+            (not solved)
+            solved'
+            (= outline-x x)
+            (= outline-y y))
+      (set! outline-x nil)
+      (set! outline-y nil))
     (assoc! cell :reachable (some #(and (:open %) (not (:mine %)) (not= "q" (:label %))) nbs)))
-  (set! flags (->> field vals (filter :mine) (remove :open) (count)))
-  (when (= 0 flags)
-    (set! screen :victory)))
+  (set! flags (- (->> field vals (filter :mine) count)
+                (->> field vals (filter :flagged) (count))))
+  (when (->> field vals (every? processed))
+    (set! screen :victory))
+  (request-render))
 
 (defn-log load-game [s]
   (set! puzzle s)
@@ -199,12 +207,16 @@
   (set! (.-textBaseline ctx) "middle")
   (.fillText ctx text (/ canvas-w 2) (/ canvas-h 2)))
 
-(defn-log preload-images []
+(defn-log load-resources [cb]
   (let [names    (concat
                    (for [i (range 9)]
                      (str i ".png"))
                    (for [i (range 9)]
                      (str i "_solved.png"))
+                   (for [i (range 1 9)]
+                     (str "-" i ".png"))
+                   (for [i (range 8)]
+                     (str "error_" i ".png"))
                    ["q.png" "q_solved.png"
                     "closed.png" "unreachable.png" "hover.png"
                     "flagged.png" "flagged_classic.png" "flag.png"
@@ -218,8 +230,7 @@
         (fn []
           (assoc! images name img)
           (when (= 0 (swap! *to-load dec))
-            (load-game puzzle)
-            (maybe-render))))
+            (cb))))
       (set! (.-src img) (str "i/" name)))))
 
 (defn render-game []
@@ -228,12 +239,15 @@
     ;; cells
     (doseq [y (range field-w)
             x (range field-h)]
-      (let [{:keys [mine open label solved reachable]} (get-cell x y)
+      (let [{:keys [mine flagged open label solved reachable]} (get-cell x y)
+            err  (and label (or (str/starts-with? label "-")
+                              (str/starts-with? label "error_")))
             name (cond
-                   (and (not tool) (not open) (= x hover-x) (= y hover-y)) "hover.png"
-                   (and mine open)                  (if modern "flagged.png" "flagged_classic.png")
+                   (and (not tool) (not open) (not flagged) (= x hover-x) (= y hover-y)) "hover.png"
+                   flagged                          (if modern "flagged.png" "flagged_classic.png")
                    (and (not open) (not reachable)) "unreachable.png"
                    (not open)                       "closed.png"
+                   err                              (str label ".png")
                    (and open solved)                (str label "_solved.png")
                    (= "q" label)                    "q_solved.png"
                    :else                            (str label ".png"))
@@ -323,28 +337,34 @@
       (.fillText ctx name 10 35))))
 
 (defn open-cell [gx gy]
-  (let [key                 (key gx gy)
-        {:keys [mine open]} (get-cell gx gy)]
-    (cond
-      open  :noop
-      mine  (do
-              (set! screen :game-over)
-              (request-render))
-      :else (do
-              (assoc! (get field key) :open true)
-              (update-field)
-              (request-render)))))
+  (let [key                         (key gx gy)
+        {:keys [mine open flagged]} (get-cell gx gy)]
+    (when-not open
+      (cond
+        flagged (assoc! (get field key) :flagged false)
+        mine    (set! screen :game-over)
+        :else   (assoc! (get field key) :open true))
+      (update-field))))
 
 (defn flag-cell [gx gy]
-  (let [key                 (key gx gy)
-        {:keys [mine open]} (get-cell gx gy)]
+  (let [key                    (key gx gy)
+        {:keys [flagged open]} (get-cell gx gy)]
     (cond
-      open  :noop
-      mine  (do
-              (assoc! (get field key) :open true)
-              (update-field))
-      :else (set! screen :game-over))
-    (request-render)))
+      open
+      :noop
+
+      flagged
+      (do
+        (assoc! (get field key) :flagged false)
+        (update-field))
+
+      (<= flags 0)
+      :noop
+
+      :else
+      (do
+        (assoc! (get field key) :flagged true)
+        (update-field)))))
 
 (defn on-resize []
   (let [w      (.-innerWidth js/window)
@@ -514,8 +534,7 @@
                          (do
                            (when-some [[gx gy] (field-coords x y)]
                              (let [{:keys [open]} (get-cell gx gy)]
-                               (when-not open
-                                 (flag-cell gx gy))))
+                               (flag-cell gx gy)))
                            (set! dragging-flag false))
 
                          ;; toolbox
@@ -612,8 +631,9 @@
   ;; Render
   (set! puzzle
     (->> puzzles/puzzles
-      (filter #(re-find #"8x8" %))
+      (filter #(re-find #"5x5" %))
       (rand-nth))
+    #_"[V]5x5-10-2017D fooOqffooofofofffqqoOfoqf   2x2,1x9,-2x1"
     #_"OffqqoofffqoooqfoOfOffOfo"
     #_"ffoqfffOfooqQfoOoqOOqOqffffOfoqoffqO"
     #_"qffqfOfffoqoffOOfOoqOfooofqffffofOqOfofoOfqfqqooo"
@@ -622,6 +642,8 @@
     #_"OFFQOOOQQFFQFOOQOQOFFOFOQofqoOOffffOffqfqooofoOoOofqffoqfffffOfq"
     #_"OffooOfOqffOqfoqqOOqfOfOqqofOqfoffqoooofQqofofoffqfooqfqfffffoff"
     #_"OffOfofqofqqfQfOOqoOoqOfofOfoffffffqoqoqOfOfffqooqOOfqfOfOfQfoqf")
-  (preload-images))
+  (load-resources #(do
+                     (load-game puzzle)
+                     (maybe-render))))
 
 (add-event-listener js/window "load" on-load)
