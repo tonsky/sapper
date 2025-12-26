@@ -26,9 +26,7 @@
   (add-watch core/*screen ::level-select
     (fn [_ _ old new]
       (when (and (not= :level-select old) (= :level-select new))
-        (doseq [line (str/split (or (js/localStorage.getItem "history") "") #"\n")
-                :when (not (str/blank? line))
-                :let [{:keys [op id]} (js/JSON.parse line)]]
+        (doseq [{:keys [op id]} (core/get-history)]
           (case op
             :win   (assoc! won id)
             :start (assoc! started id)
@@ -39,27 +37,21 @@
 
 (defn render []
   (let [[left top _ _] core/safe-area
-        puzzles (get core/puzzles tab)]
+        puzzles (get core/puzzles tab)
+        img     (get core/images "level_select.png")]
     (doseq [[i puzzle] (core/indexed puzzles)
             :let [x (mod i 18)
                   y (quot i 18)
                   {:keys [id]} puzzle]]
       (when (< (+ (* y 18) x) (count puzzles))
-        (set! (.-fillStyle ctx)
+        (.drawImage ctx img
           (cond
-            (contains? won id)     "#48C669"
-            (contains? lost id)    "#F44D44"
-            (contains? started id) "#F6CB1D"
-            :else                  "#2e4d6f"))
-        (.beginPath ctx)
-        (.roundRect ctx (+ left 20 (* x 30) 1) (+ top 40 (* y 30) 1) 28 28 2)
-        (.fill ctx)
-
-        (set! (.-font ctx) "8px sans-serif")
-        (set! (.-textAlign ctx) "center")
-        (set! (.-textBaseline ctx) "middle")
-        (set! (.-fillStyle ctx) "#113050")
-        (.fillText ctx id (+ left 20 (* x 30) 15) (+ top 40 (* y 30) 15))))
+            (contains? won id)     400
+            (contains? lost id)    300
+            (contains? started id) 200
+            :else                  0) 0 100 100
+          (+ left 20 (* x 30) -10)
+          (+  top 40 (* y 30) -10) 50 50)))
 
     (doseq [[x [key name]] (->> tabs (sort-by first) core/indexed)]
       (set! (.-fillStyle ctx) (if (= tab key) "#fff" "#2e4d6f"))

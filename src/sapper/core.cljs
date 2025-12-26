@@ -17,6 +17,7 @@
 (def *screen (atom :loading))
 (def images {})
 (def puzzles {})
+(def t0 (.getTime (Date. "2025-01-01")))
 
 (def *render-requested
   (atom false))
@@ -36,7 +37,7 @@
       (< y (+ t h margin)))))
 
 (defn parse-puzzle [puzzle]
-  (let [[_ id code] (re-find #"-([0-9A-Z]+) +([foqFOQ]+)" puzzle)]
+  (let [[_ id code] (re-find #"([^ ]+) +([foqFOQ]+)" puzzle)]
     {:id id
      :code code}))
 
@@ -46,14 +47,13 @@
                    (fn [_ _ _ v]
                      (when (= 0 v)
                        (cb))))
-        is    ["0.png" "1.png" "2.png" "3.png" "4.png" "5.png" "6.png" "7.png" "8.png"
+        is    ["level_select.png"
+               "btn_back.png" "btn_retry.png" "btn_reload.png"
+               "0.png" "1.png" "2.png" "3.png" "4.png" "5.png" "6.png" "7.png" "8.png"
                "0_solved.png" "1_solved.png" "2_solved.png" "3_solved.png" "4_solved.png" "5_solved.png" "6_solved.png" "7_solved.png" "8_solved.png"
                "-1.png" "-2.png" "-3.png" "-4.png" "-5.png" "-6.png" "-7.png" "-8.png"
                "error_0.png" "error_1.png" "error_2.png" "error_3.png" "error_4.png" "error_5.png" "error_6.png" "error_7.png"
-               "q.png" "q_solved.png"
-               "closed.png" "hover.png"
-               "flagged.png" "flag.png"
-               "btn_back.png" "btn_retry.png" "btn_reload.png"
+               "q.png" "q_solved.png" "closed.png" "hover.png" "flagged.png" "flag.png"
                "tool_eraser.png" "tool_color1.png" "tool_color2.png" "tool_color3.png" "tool_color4.png"
                "tool_eraser_selected.png" "tool_color1_selected.png" "tool_color2_selected.png" "tool_color3_selected.png" "tool_color4_selected.png"]
         _     (swap! *pending + (count is))
@@ -71,7 +71,6 @@
                   (.then (fn [text]
                            (let [arr (->> (str/split text #"\n")
                                        (map parse-puzzle)
-                                       (sort-by #(js/Number.parseInt (:id %)))
                                        vec)]
                            (assoc! puzzles name arr)
                            (swap! *pending dec))))
@@ -79,12 +78,33 @@
                             (println "Error loading" name err)
                             (swap! *pending dec)))))]))
 
+(defn get-history []
+  (vec
+    (for [line (str/split (or (js/localStorage.getItem "sapper/h") "") #"\n")
+          :when (not (str/blank? line))
+          :let [[id op t] (str/split line #"\s")]]
+      {:id   id
+       :op   (case op "s" :start "l" :lose "w" :win)
+       :date (Date. (* (+ t t0) 1000))})))
+
 (defn append-history [id op]
-  (let [v  (or (js/localStorage.getItem "history") "")
-        v' (str v (js/JSON.stringify {:id   id
-                                      :op   op
-                                      :date (js/Date.now)}) "\n")]
-    (js/localStorage.setItem "history" v')))
+  (let [v  (or (js/localStorage.getItem "sapper/h") "")
+        v' (str v id " " (subs op 0 1) " " (-> (js/Date.now) (- t0) (/ 1000) js/Math.floor) "\n")]
+    (js/localStorage.setItem "sapper/h" v')))
+
+(defn maybe-upgrade-storage []
+  (let [v (-> (js/localStorage.getItem "sapper/v") (or "1") parse-long)]
+    (when (<= v 1)
+      (let [history (-> (or (js/localStorage.getItem "history") "")
+                      (str/split #"\n")
+                      (->> (remove str/blank?)
+                        (mapv js/JSON.parse)))
+            history' (for [{:keys [id op date]} history]
+                       (str "[V]5x5-10-" id " " (subs op 0 1) " " (-> date (- t0) (/ 1000) js/Math.floor)))]
+        (println (str/join "\n" history'))
+        (js/localStorage.setItem "sapper/h" (str (str/join "\n" history') "\n"))
+        (js/localStorage.setItem "sapper/v" "2")
+        (js/localStorage.removeItem "history")))))
 
 (defn on-resize []
   (let [w      (.-innerWidth js/window)
@@ -116,6 +136,7 @@
   (set! ctx       (.getContext canvas "2d"))
   (set! notes     (.querySelector js/document "#notes"))
   (set! notes-ctx (.getContext notes "2d"))
-  (on-resize))
+  (on-resize)
+  (maybe-upgrade-storage))
 
 (.addEventListener js/window "load" on-load)
