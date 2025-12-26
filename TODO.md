@@ -9,12 +9,13 @@
 - [ ] Open animation
 - [ ] Try highlighting cells instead of outline
 - [ ] Auto-open when zero
-- [ ] Level select
-- [ ] Save progression
+- [ ] Sync progression
 - [ ] Click to fill when count(closed) == label
 - [ ] Game over screen
 - [ ] Expert mode
 - [ ] Setting screen
+- [x] Level select
+- [x] Save progression
 - [x] Remove unreachable
 - [x] Auto-expand flag-gap
 - [x] Key shortcuts don't trigger with modifiers

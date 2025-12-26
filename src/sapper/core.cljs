@@ -13,15 +13,16 @@
 (def canvas-scale 1)
 (def dpi (or (.-devicePixelRatio js/window) 1))
 (def safe-area nil)
+(def *puzzle (atom nil))
+(def *screen (atom :loading))
+(def images {})
+(def puzzles {})
 
 (def *render-requested
   (atom false))
 
 (defn request-render []
   (reset! *render-requested true))
-
-(def images {})
-(def puzzles {})
 
 (defn indexed [seq]
   (map vector (range) seq))
@@ -52,7 +53,7 @@
                "q.png" "q_solved.png"
                "closed.png" "hover.png"
                "flagged.png" "flag.png"
-               "btn_retry.png" "btn_reload.png"
+               "btn_back.png" "btn_retry.png" "btn_reload.png"
                "tool_eraser.png" "tool_color1.png" "tool_color2.png" "tool_color3.png" "tool_color4.png"
                "tool_eraser_selected.png" "tool_color1_selected.png" "tool_color2_selected.png" "tool_color3_selected.png" "tool_color4_selected.png"]
         _     (swap! *pending + (count is))
@@ -75,8 +76,15 @@
                            (assoc! puzzles name arr)
                            (swap! *pending dec))))
                   (.catch (fn [err]
-                            (println (str "Error loading " name ": " err))
+                            (println "Error loading" name err)
                             (swap! *pending dec)))))]))
+
+(defn append-history [id op]
+  (let [v  (or (js/localStorage.getItem "history") "")
+        v' (str v (js/JSON.stringify {:id   id
+                                      :op   op
+                                      :date (js/Date.now)}) "\n")]
+    (js/localStorage.setItem "history" v')))
 
 (defn on-resize []
   (let [w      (.-innerWidth js/window)

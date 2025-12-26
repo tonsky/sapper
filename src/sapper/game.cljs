@@ -7,7 +7,6 @@
   (:require-macros
    [sapper.macros :refer [defn-log cond+]]))
 
-(def puzzle)
 (def modern true)
 (def cell-size 70)
 (def sprite-size 100)
@@ -22,7 +21,7 @@
 (def grid-h 0)
 (def outline-x nil)
 (def outline-y nil)
-(def screen :loading)
+(def started false)
 
 (def dragging-flag false)
 (def drag-type nil)
@@ -134,14 +133,15 @@
   (set! flags (- (->> field vals (filter :mine) count)
                 (->> field vals (filter :flagged) (count))))
   (when (->> field vals (every? processed))
-    (set! screen :victory))
+    (core/append-history (:id @core/*puzzle) :win)
+    (reset! core/*screen :victory))
   (core/request-render))
 
-(defn-log load-game [s]
-  (set! puzzle s)
-  (let [code     (re-find #"[foqFOQ]+" puzzle)
+(defn-log load-game []
+  (let [code     (:code @core/*puzzle)
         len      (count code)
         *to-open (atom [])]
+    (set! started false)
     (set! field-w (js/Math.sqrt len))
     (set! field-h (js/Math.sqrt len))
     (set! grid-w (* field-w cell-size))
@@ -171,7 +171,7 @@
       (set-timeout (* i 50) f))
 
     (update-field)
-    (set! screen :game)
+    (reset! core/*screen :game)
 
     ;; tools
     (.clearRect (.getContext notes "2d") 0 0 canvas-w canvas-h)
@@ -283,23 +283,31 @@
       (.stroke ctx))
 
     ;; level name
-    (let [name (re-find #"^[^ ]+" puzzle)]
+    (let [id (:id @core/*puzzle)]
       (set! (.-font ctx) "10px sans-serif")
       (set! (.-textAlign ctx) "left")
       (set! (.-fillStyle ctx) "#284E6D")
-      (.fillText ctx name 13 35))))
+      (.fillText ctx id 13 35))))
 
 (defn open-cell [gx gy]
+  (when-not started
+    (set! started true)
+    (core/append-history (:id @core/*puzzle) :start))
   (let [key                         (key gx gy)
         {:keys [mine open flagged]} (get-cell gx gy)]
     (when-not open
       (cond
         flagged (assoc! (get field key) :flagged false)
-        mine    (set! screen :game-over)
+        mine    (do
+                  (core/append-history (:id @core/*puzzle) :lose)
+                  (reset! core/*screen :game-over))
         :else   (assoc! (get field key) :open true))
       (update-field))))
 
 (defn flag-cell [gx gy]
+  (when-not started
+    (set! started true)
+    (core/append-history (:id @core/*puzzle) :start))
   (let [key                    (key gx gy)
         {:keys [flagged open]} (get-cell gx gy)]
     (cond
@@ -329,7 +337,7 @@
   (.clearRect ctx 0 0 canvas-w canvas-h)
 
   ;; render screen
-  (case screen
+  (case @core/*screen
     :loading      (render-text "Loading resources...")
     :level-select (level-select/render)
     :game         (render-game)
@@ -337,6 +345,8 @@
     :victory      (render-text "Congratulations! You won!"))
 
   ;; buttons
+  (when-some [img (get images "btn_back.png")]
+    (.drawImage ctx img  (- canvas-w 250) 0 sprite-size sprite-size))
   (when-some [img (get images "btn_retry.png")]
     (.drawImage ctx img  (- canvas-w 175) 0 sprite-size sprite-size))
   (when-some [img (get images "btn_reload.png")]
@@ -408,7 +418,7 @@
             (core/request-render))
 
           (and (= "r" key) (not mod))
-          (load-game puzzle)
+          (load-game)
 
           (and (= "Escape" key) (not mod))
           (do
@@ -485,8 +495,14 @@
                          :noop
 
                          ;; retry button
+                         (core/inside? x y (- canvas-w 225) 25 50 50)
+                         (do
+                           (reset! core/*screen :level-select)
+                           (render))
+
+                         ;; retry button
                          (core/inside? x y (- canvas-w 150) 25 50 50)
-                         (load-game puzzle)
+                         (load-game)
 
                          ;; reload button
                          (core/inside? x y (- canvas-w 75) 25 50 50)
@@ -538,7 +554,7 @@
         (.preventDefault e)
         (let [[x y] (rel-coords (aget (.-changedTouches e) 0))
               e'    {:event "mouseup", :x x, :y y}]
-          (case screen
+          (case @core/*screen
             :level-select (level-select/on-event e')
             #_else        (on-end x y :primary)))))
 
@@ -560,7 +576,7 @@
         (when (= 0 (.-button e))
           (let [[x y] (rel-coords e)
                 e'    {:event "mouseup", :x x, :y y}]
-            (case screen
+            (case @core/*screen
               :level-select (level-select/on-event e' canvas-w canvas-h)
               #_else        (on-end x y :primary))))))
 
@@ -571,7 +587,7 @@
           (on-end x y :secondary)))))
 
   ;; Render
-  (set! puzzle
+  #_(set! puzzle
     (->> puzzles/puzzles
       (filter #(re-find #"8x8" %))
       (rand-nth))
@@ -584,10 +600,15 @@
     #_"OFFQOOOQQFFQFOOQOQOFFOFOQofqoOOffffOffqfqooofoOoOofqffoqfffffOfq"
     #_"OffooOfOqffOqfoqqOOqfOfOqqofOqfoffqoooofQqofofoffqfooqfqfffffoff"
     #_"OffOfofqofqqfQfOOqoOoqOfofOfoffffffqoqoqOfOfffqooqOOfqfOfOfQfoqf")
-  (core/load-resources #(do
-                          (load-game puzzle)
-                          (set! screen :game)
-                          #_(set! screen :level-select)
-                          (render))))
+
+  (add-watch core/*screen ::load-game
+    (fn [_ _ old new]
+      (when (and (not= :game old) (= :game new))
+        (load-game))))
+
+  (core/load-resources
+    #(do
+       (reset! core/*screen :level-select)
+       (render))))
 
 (add-event-listener js/window "load" on-load)
