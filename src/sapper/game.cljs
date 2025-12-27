@@ -494,9 +494,10 @@
                          tool
                          :noop
 
-                         ;; retry button
+                         ;; back button
                          (core/inside? x y (- canvas-w 225) 25 50 50)
                          (do
+                           (.clearRect (.getContext notes "2d") 0 0 canvas-w canvas-h)
                            (reset! core/*screen :level-select)
                            (render))
 

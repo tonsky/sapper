@@ -38,18 +38,22 @@
 (defn render []
   (let [[left top _ _] core/safe-area
         puzzles (get core/puzzles tab)
-        img     (get core/images "level_select.png")]
+        img     (get core/images "level_select.png")
+        *seed   (atom 0)]
     (doseq [[i puzzle] (core/indexed puzzles)
-            :let [x (mod i 18)
-                  y (quot i 18)
-                  {:keys [id]} puzzle]]
+            :let [_            (swap! *seed #(-> % (* 1103515245) (+ 12345) (mod 2147483648)))
+                  x            (mod i 18)
+                  y            (quot i 18)
+                  {:keys [id]} puzzle
+                  sprite-left  (cond
+                                 (contains? won id)     400
+                                 (contains? lost id)    300
+                                 (contains? started id) 200
+                                 :else                  0)
+                  sprite-top   (-> @*seed (/ 2147483648) (* 5) js/Math.floor (* 100))]]
       (when (< (+ (* y 18) x) (count puzzles))
         (.drawImage ctx img
-          (cond
-            (contains? won id)     400
-            (contains? lost id)    300
-            (contains? started id) 200
-            :else                  0) 0 100 100
+          sprite-left sprite-top 100 100
           (+ left 20 (* x 30) -10)
           (+  top 40 (* y 30) -10) 50 50)))
 
@@ -65,29 +69,29 @@
       (set! (.-fillStyle ctx) (if (= tab key) "#2e4d6f" "#fff"))
       (.fillText ctx name (+ left 110 35 (* x 90)) (+ top 760 25)))))
 
-(defn on-event [e]
-  (let [{:keys [x y event]} e
-        [left top _ _] core/safe-area]
-    (case event
-      "mouseup"
-      (cond
-        (core/inside? x y (+ left 20) (+ top 40) (* 30 18) (* 30 23))
-        (let [gx      (quot (- x left 20) 30)
-              gy      (quot (- y top 40) 30)
-              i       (+ (* gy 18) gx)
-              puzzles (get core/puzzles tab)]
-          (when (< i (count puzzles))
-            (reset! core/*puzzle (nth puzzles i))
-            (reset! core/*screen :game)))
+            (defn on-event [e]
+              (let [{:keys [x y event]} e
+                    [left top _ _] core/safe-area]
+                (case event
+                  "mouseup"
+                  (cond
+                    (core/inside? x y (+ left 20) (+ top 40) (* 30 18) (* 30 23))
+                    (let [gx      (quot (- x left 20) 30)
+                          gy      (quot (- y top 40) 30)
+                          i       (+ (* gy 18) gx)
+                          puzzles (get core/puzzles tab)]
+                      (when (< i (count puzzles))
+                        (reset! core/*puzzle (nth puzzles i))
+                        (reset! core/*screen :game)))
 
-        (core/inside? x y (+ left 110) (+ top 760) 70 50 10)
-        (set-tab "v5.txt")
+                    (core/inside? x y (+ left 110) (+ top 760) 70 50 10)
+                    (set-tab "v5.txt")
 
-        (core/inside? x y (+ left 110 (* 1 90)) (+ top 760) 70 50 10)
-        (set-tab "v6.txt")
+                    (core/inside? x y (+ left 110 (* 1 90)) (+ top 760) 70 50 10)
+                    (set-tab "v6.txt")
 
-        (core/inside? x y (+ left 110 (* 2 90)) (+ top 760) 70 50 10)
-        (set-tab "v7.txt")
+                    (core/inside? x y (+ left 110 (* 2 90)) (+ top 760) 70 50 10)
+                    (set-tab "v7.txt")
 
-        (core/inside? x y (+ left 110 (* 3 90)) (+ top 760) 70 50 10)
-        (set-tab "v8.txt")))))
+                    (core/inside? x y (+ left 110 (* 3 90)) (+ top 760) 70 50 10)
+                    (set-tab "v8.txt")))))
