@@ -139,6 +139,18 @@
        :op   (case op "s" :start "l" :lose "w" :win)
        :date (Date. (* (+ t t0) 1000))})))
 
+(defn puzzle-statuses []
+  (let [won     #{}
+        started #{}
+        lost    #{}]
+    (doseq [{:keys [op id]} (get-history)]
+      (case op
+        :win   (.add won id)
+        :start (.add started id)
+        :lose  (.add lost id)
+        nil))
+    {:won won :started started :lost lost}))
+
 (defn append-history [id op]
   (let [v  (or (js/localStorage.getItem "sapper/h") "")
         v' (str v id " " (subs op 0 1) " " (-> (js/Date.now) (- t0) (/ 1000) js/Math.floor) "\n")]

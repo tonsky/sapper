@@ -5,9 +5,7 @@
   (:require-macros
    [sapper.macros :refer [defn-log cond+]]))
 
-(def won {})
-(def started {})
-(def lost {})
+(def statuses)
 (def hover-idx nil)
 
 (def tab)
@@ -19,16 +17,12 @@
 
 (defn on-enter []
   (set-tab (second @core/*screen))
-  (doseq [{:keys [op id]} (core/get-history)]
-    (case op
-      :win   (assoc! won id)
-      :start (assoc! started id)
-      :lose  (assoc! lost id)
-      nil)))
+  (set! statuses (core/puzzle-statuses)))
 
 (defn on-render []
   (let [[left top _ _] core/safe-area
         puzzles (get core/puzzles-by-type tab)
+        {:keys [won lost started]} statuses
         img     (get core/images "level_select.png")
         *seed   (atom (js/Number. (subs tab 3 4)))]
     (doseq [[i puzzle] (core/indexed puzzles)

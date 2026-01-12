@@ -132,7 +132,7 @@
         [_ fw fh] (re-find #"(\d+)x(\d+)" id)
         len      (count code)
         *to-open (atom [])]
-    (set! phase :new)
+    (set! phase :init)
     (set! field-w (parse-long fw))
     (set! field-h (parse-long fh))
     (set! grid-w (* field-w cell-size))
@@ -154,15 +154,23 @@
             "q" {:mine false, :open false, :label "q"}
             "Q" {:mine false, :open true,  :label "q"}))
         (case ch
-          "F"       (swap! *to-open conj #(flag-cell x y))
-          ("O" "Q") (swap! *to-open conj #(open-cell x y))
+          "F"       (swap! *to-open conj #(flag-cell x y :init))
+          ("O" "Q") (swap! *to-open conj #(open-cell x y :init))
           nil)))
 
     (doseq [[i f] (core/indexed (shuffle @*to-open))]
       (core/set-timeout (* i 50) f))
 
     (update-field)
-    (set! tool nil)))
+    (set! outline-x nil)
+    (set! outline-y nil)
+    (set! phase :new)
+    (set! dragging-flag false)
+    (set! drag-x nil)
+    (set! drag-y nil)
+    (set! drag-device nil)
+    (set! tool nil)
+    (set! tool-points [nil nil])))
 
 (defn on-render []
   (let [[hover-x hover-y] (when (and drag-x drag-y)
@@ -265,7 +273,10 @@
         (.drawImage ctx img (- x tool-margin) (- y tool-margin) sprite-size sprite-size)))
 
     ;; Eraser cursor
-    (when (and (= :eraser tool) drag-x drag-y)
+    (when (and drag-x drag-y
+            (or
+              (= :eraser tool)
+              (and tool (= :mouse-right drag-device))))
       (set! (.-strokeStyle ctx) "#FFFFFF20")
       (set! (.-lineWidth ctx) 1)
       (.beginPath ctx)
@@ -280,11 +291,11 @@
       (set! (.-textAlign ctx) "center")
       (set! (.-textBaseline ctx) "middle")
       (set! (.-fillStyle ctx) "#FFF")
-      (.fillText ctx (case phase :game-over "Game Over :(" :victory "Victory :)")
+      (.fillText ctx (case phase :game-over "Game Over :(" :victory "Victory!")
         (+ grid-x (quot grid-w 2)) (+ grid-y (quot grid-h 2))))))
 
-(defn open-cell [gx gy]
-  (when (= :new phase)
+(defn open-cell [gx gy phase-override]
+  (when (= :new (or phase-override phase))
     (set! phase :play)
     (core/append-history (:id puzzle) :start))
   (let [key                         (key gx gy)
@@ -298,8 +309,8 @@
         :else   (assoc! (get field key) :open true))
       (update-field))))
 
-(defn flag-cell [gx gy]
-  (when (= :new phase)
+(defn flag-cell [gx gy phase-override]
+  (when (= :new (or phase-override phase))
     (set! phase :play)
     (core/append-history (:id puzzle) :start))
   (let [key                    (key gx gy)
@@ -324,6 +335,22 @@
 (defn reload []
   #_(reset! core/*screen @core/*screen)
   (.reload (.-location js/window)))
+
+(defn load-random-puzzle []
+  (let [type    (:type puzzle)
+        puzzles (mapv :id (get core/puzzles-by-type type))
+        {:keys [won lost started]} (core/puzzle-statuses)
+        union   (-> won (.union lost) (.union started))
+        fresh   (into [] (remove #(.has union %) puzzles))]
+    (if-not (empty? fresh)
+      (reset! core/*screen [:game (rand-nth fresh)])
+      (let [just-started (-> started (.difference won) (.difference lost))]
+        (if-not (empty? just-started)
+          (reset! core/*screen [:game (rand-nth just-started)])
+          (let [just-lost (-> lost (.difference won) (.difference started))]
+            (if-not (empty? just-lost)
+              (reset! core/*screen [:game (rand-nth just-lost)])
+              (reset! core/*screen [:game (rand-nth puzzles)]))))))))
 
 (defn on-tool-click [tool']
   (case tool'
@@ -388,12 +415,12 @@
   (set! drag-device device)
   (cond+
     tool
-    (do
-      (set! (.-lineWidth notes-ctx) (case tool :eraser 40 6))
-      (set! (.-strokeStyle notes-ctx) (get tool-colors tool "#000"))
+    (let [tool' (if (= :mouse-right device) :eraser tool)]
+      (set! (.-lineWidth notes-ctx) (case tool' :eraser 40 6))
+      (set! (.-strokeStyle notes-ctx) (get tool-colors tool' "#000"))
       (set! (.-lineCap notes-ctx) "round")
       (set! (.-lineJoin notes-ctx) "round")
-      (set! (.-globalCompositeOperation notes-ctx) (case tool :eraser "destination-out" "source-over"))
+      (set! (.-globalCompositeOperation notes-ctx) (case tool' :eraser "destination-out" "source-over"))
       (aset tool-points 0 nil)
       (aset tool-points 1 [x y])
       (core/request-render))
@@ -410,7 +437,7 @@
       (core/request-render))))
 
 (defn on-pointer-move [{:keys [x y device]}]
-  (when (and (#{:mouse-left :touch} device) tool)
+  (when (and (#{:mouse-left :mouse-right :touch} device) tool)
     (let [[x0 y0] (aget tool-points 0)
           [x1 y1] (aget tool-points 1)]
       (when (and x1 y1 (>= (js/Math.hypot (- x x1) (- y y1)) 5))
@@ -425,8 +452,8 @@
         (aset tool-points 1 [x y]))))
   (when (or
           (= :eraser tool)
-          (and (#{:mouse-left :touch} device)
-            (or tool dragging-flag)))
+          (and (#{:mouse-left :mouse-right :touch} device) tool)
+          (and (#{:mouse-left :touch} device) dragging-flag))
     (set! drag-x x)
     (set! drag-y y)
     (core/request-render)))
@@ -466,12 +493,13 @@
 
       ;; random button
       (in? (- canvas-w 75) 25 50 50)
-      :TODO
+      (load-random-puzzle)
 
       tool
       (do
         (aset tool-points 0 nil)
-        (aset tool-points 1 nil))
+        (aset tool-points 1 nil)
+        (core/request-render))
 
       ;; end game
       (#{:game-over :victory} phase)

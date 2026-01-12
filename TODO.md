@@ -1,8 +1,7 @@
-- [ ] Random puzzle button
-- [ ] Drag flag from the cell
+- [ ] Unflag by dragging from cell
 - [ ] Pencils/drawing
   - [x] Basic drawing
-  - [ ] Erase with right mouse
+  - [x] Erase with right mouse
   - [ ] Mouse down should erase a circle
   - [ ] Always draw till the current mouse positon
   - [ ] Undo
@@ -14,6 +13,7 @@
 - [ ] Game over screen
 - [ ] Expert mode
 - [ ] Setting screen
+- [x] Random puzzle button
 - [x] Split code into modules
 - [x] Puzzle in URL
 - [x] Level select
