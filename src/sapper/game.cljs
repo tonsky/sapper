@@ -36,8 +36,11 @@
    :color2 "#3FC833"
    :color3 "#F44D44"
    :color4 "#25D0FF"})
+(def tool-drawing? false)
 (def tool-points [nil nil])
 (def tool-size 60)
+(def undo-buffer [])
+(def undo-depth 20)
 
 (declare open-cell flag-cell)
 
@@ -92,6 +95,19 @@
   (or
     (:flagged cell)
     (:open cell)))
+
+(defn save-undo-snapshot []
+  (let [image-data (.getImageData notes-ctx 0 0 (.-width notes) (.-height notes))]
+    (set! undo-buffer (vec (take-last undo-depth (conj undo-buffer image-data))))
+    #_(println "save-undo-snapshot ->" (count undo-buffer))))
+
+(defn undo []
+  (when (seq undo-buffer)
+    #_(println "undo ->" (dec (count undo-buffer)))
+    (let [prev-state (peek undo-buffer)]
+      (set! undo-buffer (pop undo-buffer))
+      (.putImageData notes-ctx prev-state 0 0)
+      (core/request-render))))
 
 (defn-log update-field []
   (doseq [[key cell] field
@@ -170,7 +186,8 @@
     (set! drag-y nil)
     (set! drag-device nil)
     (set! tool nil)
-    (set! tool-points [nil nil])))
+    (set! tool-points [nil nil])
+    (set! undo-buffer [])))
 
 (defn on-render []
   (let [[hover-x hover-y] (when (and drag-x drag-y)
@@ -355,10 +372,11 @@
 (defn on-tool-click [tool']
   (case tool'
     :undo
-    :TODO
+    (undo)
 
     :clear
     (do
+      (save-undo-snapshot)
       (aset tool-points 0 nil)
       (aset tool-points 1 nil)
       (.clearRect notes-ctx 0 0 canvas-w canvas-h)
@@ -380,6 +398,9 @@
   (let [key (.-key e)
         mod (or (.-altKey e) (.-ctrlKey e) (.-metaKey e) (.-shiftKey e))]
     (cond
+      (and (or (.-ctrlKey e) (.-metaKey e)) (= "z" key))
+      (undo)
+
       (or (.-altKey e) (.-ctrlKey e) (.-metaKey e) (.-shiftKey e))
       :noop
 
@@ -421,6 +442,7 @@
       (set! (.-lineCap notes-ctx) "round")
       (set! (.-lineJoin notes-ctx) "round")
       (set! (.-globalCompositeOperation notes-ctx) (case tool' :eraser "destination-out" "source-over"))
+      (set! tool-drawing? false)
       (aset tool-points 0 nil)
       (aset tool-points 1 [x y])
       (core/request-render))
@@ -445,6 +467,9 @@
           (.beginPath notes-ctx)
           (.moveTo notes-ctx x1 y1))
         (when (and x0 y0 x1 y1)
+          (when (not tool-drawing?)
+            (save-undo-snapshot)
+            (set! tool-drawing? true))
           (.quadraticCurveTo notes-ctx x1 y1 (/ (+ x1 x) 2) (/ (+ y1 y) 2))
           #_(.lineTo notes-ctx x y)
           (.stroke notes-ctx))

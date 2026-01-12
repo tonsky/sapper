@@ -4,7 +4,7 @@
   - [x] Erase with right mouse
   - [ ] Mouse down should erase a circle
   - [ ] Always draw till the current mouse positon
-  - [ ] Undo
+  - [x] Undo
 - [ ] Open animation
 - [ ] Try highlighting cells instead of outline
 - [ ] Auto-open when zero

@@ -208,7 +208,7 @@
   (set! canvas    (.querySelector js/document "#canvas"))
   (set! ctx       (.getContext canvas "2d"))
   (set! notes     (.querySelector js/document "#notes"))
-  (set! notes-ctx (.getContext notes "2d"))
+  (set! notes-ctx (.getContext notes "2d" #js {:willReadFrequently true}))
   (on-resize)
   (maybe-upgrade-storage)
 
@@ -249,7 +249,7 @@
   (add-event-listener js/window "resize"
     (fn [e]
       (on-resize e)
-      (call-screen-fn :on-resize %)))
+      (call-screen-fn :on-resize e)))
 
   (add-event-listener js/window "keydown" #(call-screen-fn :on-key-down %))
 
