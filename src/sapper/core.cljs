@@ -13,17 +13,65 @@
 (def canvas-scale 1)
 (def dpi (or (.-devicePixelRatio js/window) 1))
 (def safe-area nil)
-(def *puzzle (atom nil))
-(def *screen (atom :loading))
+(def *screen (atom [:loading]))
+(def screens {})
 (def images {})
-(def puzzles {})
+(def puzzles-by-id {})
+(def puzzles-by-type {})
 (def t0 (.getTime (Date. "2025-01-01")))
+
+;; RENDERING
+
+(declare maybe-render)
 
 (def *render-requested
   (atom false))
 
 (defn request-render []
   (reset! *render-requested true))
+
+(defn set-timeout [dt f]
+  (js/setTimeout #(do (f) (maybe-render)) dt))
+
+(defn add-event-listener [el event f opts]
+  (.addEventListener el event
+    #(do (f %) (maybe-render))
+    opts))
+
+(defn call-screen-fn-impl [screen-key name & args]
+  (let [screen (get screens (first screen-key))]
+    (assert (some? screen) (str "unknown screen '" screen-key "'"))
+    (when-some [f (get screen name)]
+      (apply f args))))
+
+(defn call-screen-fn [name & args]
+  (apply call-screen-fn-impl @*screen name args))
+
+(defn render []
+  (set! (.-fillStyle ctx) "#0E2E4E")
+  (.fillRect ctx 0 0 canvas-w canvas-h)
+
+  ;; safe area
+  (let [[l t w h] safe-area]
+    (set! (.-fillStyle ctx) "#103050")
+    (.beginPath ctx)
+    (.roundRect ctx l t w h 4)
+    (.fill ctx))
+
+  ;; viewport size
+  (set! (.-font ctx) "10px sans-serif")
+  (set! (.-fillStyle ctx) "#284E6D")
+  (set! (.-textAlign ctx) "left")
+  (.fillText ctx (str canvas-w "×" canvas-h "@" canvas-scale) 13 23)
+
+  (call-screen-fn :on-render))
+
+(defn maybe-render []
+  (when @*render-requested
+    (reset! *render-requested false)
+    (render)))
+
+;; UTILS
 
 (defn indexed [seq]
   (map vector (range) seq))
@@ -36,47 +84,51 @@
       (<= (- t margin) y)
       (< y (+ t h margin)))))
 
+(defn both-inside? [x1 y1 x2 y2 l t w h margin]
+  (and
+    (inside? x1 y1 l t w h margin)
+    (inside? x2 y2 l t w h margin)))
+
 (defn parse-puzzle [puzzle]
-  (let [[_ id code] (re-find #"([^ ]+) +([foqFOQ]+)" puzzle)]
-    {:id id
+  (let [[_ id type code] (re-find #"(([^ -]+)[^ ]+) +([foqFOQ]+)" puzzle)]
+    {:id   id
+     :type type
      :code code}))
 
 (defn-log load-resources [cb]
-  (let [*pending (atom 0)
-        _        (add-watch *pending ::cb
-                   (fn [_ _ _ v]
-                     (when (= 0 v)
-                       (cb))))
-        is    ["level_select.png"
-               "btn_back.png" "btn_retry.png" "btn_reload.png"
-               "0.png" "1.png" "2.png" "3.png" "4.png" "5.png" "6.png" "7.png" "8.png"
-               "0_solved.png" "1_solved.png" "2_solved.png" "3_solved.png" "4_solved.png" "5_solved.png" "6_solved.png" "7_solved.png" "8_solved.png"
-               "-1.png" "-2.png" "-3.png" "-4.png" "-5.png" "-6.png" "-7.png" "-8.png"
-               "error_0.png" "error_1.png" "error_2.png" "error_3.png" "error_4.png" "error_5.png" "error_6.png" "error_7.png"
-               "q.png" "q_solved.png" "closed.png" "hover.png" "flagged.png" "flag.png"
-               "tool_eraser.png" "tool_color1.png" "tool_color2.png" "tool_color3.png" "tool_color4.png"
-               "tool_eraser_selected.png" "tool_color1_selected.png" "tool_color2_selected.png" "tool_color3_selected.png" "tool_color4_selected.png"]
-        _     (swap! *pending + (count is))
-        _     (doseq [name is
-                      :let [img (js/Image.)]]
-                (set! (.-onload img) #(do
-                                        (assoc! images name img)
-                                        (swap! *pending dec)))
-                (set! (.-src img) (str "i/" name)))
-        ps    ["v5.txt" "v6.txt" "v7.txt" "v8.txt"]
-        _     (swap! *pending + (count ps))
-        _     (doseq [name ps]
-                (-> (js/fetch (str "puzzles/" name))
-                  (.then #(.text %))
-                  (.then (fn [text]
-                           (let [arr (->> (str/split text #"\n")
-                                       (map parse-puzzle)
-                                       vec)]
-                           (assoc! puzzles name arr)
-                           (swap! *pending dec))))
-                  (.catch (fn [err]
-                            (println "Error loading" name err)
-                            (swap! *pending dec)))))]))
+  (let [resources (into
+                    #{"btn_back.png" "btn_retry.png" "btn_reload.png"}
+                    (mapcat :resources (vals screens)))
+        *pending (atom (count resources))]
+    (add-watch *pending ::cb
+      (fn [_ _ _ v]
+        (when (= 0 v)
+          (cb))))
+    (doseq [name resources]
+      (condp re-matches name
+        #".*\.png"
+        (let [img (js/Image.)]
+          (set! (.-onload img) #(do
+                                  (assoc! images name img)
+                                  (swap! *pending dec)))
+          (set! (.-src img) (str "i/" name)))
+
+        #".*\.txt"
+        (-> (js/fetch (str "puzzles/" name))
+          (.then #(.text %))
+          (.then (fn [text]
+                   (let [arr (->> (str/split text #"\n")
+                               (map parse-puzzle)
+                               vec)]
+                     (assoc! puzzles-by-type (:type (first arr)) arr)
+                     (doseq [puzzle arr]
+                       (assoc! puzzles-by-id (:id puzzle) puzzle))
+                     (swap! *pending dec))))
+          (.catch (fn [err]
+                    (println "Error loading" name err)
+                    (swap! *pending dec))))))))
+
+;; STORAGE
 
 (defn get-history []
   (vec
@@ -101,10 +153,18 @@
                         (mapv js/JSON.parse)))
             history' (for [{:keys [id op date]} history]
                        (str "[V]5x5-10-" id " " (subs op 0 1) " " (-> date (- t0) (/ 1000) js/Math.floor)))]
-        (println (str/join "\n" history'))
+        #_(println (str/join "\n" history'))
         (js/localStorage.setItem "sapper/h" (str (str/join "\n" history') "\n"))
         (js/localStorage.setItem "sapper/v" "2")
         (js/localStorage.removeItem "history")))))
+
+;; EVENTS
+
+(defn rel-coords [e]
+  (let [rect (.getBoundingClientRect canvas)
+        x    (-> (.-clientX e) (- (.-left rect)) (* dpi) (/ canvas-scale) js/Math.round)
+        y    (-> (.-clientY e) (- (.-top rect)) (* dpi) (/ canvas-scale) js/Math.round)]
+    [x y]))
 
 (defn on-resize []
   (let [w      (.-innerWidth js/window)
@@ -128,7 +188,8 @@
     (set! (.-width notes) dw)
     (set! (.-height notes) dh)
     (.resetTransform notes-ctx)
-    (.scale notes-ctx canvas-scale canvas-scale)))
+    (.scale notes-ctx canvas-scale canvas-scale)
+    (request-render)))
 
 (defn on-load []
   (println "core/on-load")
@@ -137,6 +198,103 @@
   (set! notes     (.querySelector js/document "#notes"))
   (set! notes-ctx (.getContext notes "2d"))
   (on-resize)
-  (maybe-upgrade-storage))
+  (maybe-upgrade-storage)
 
-(.addEventListener js/window "load" on-load)
+  ;; Prevent all scrolling and rubber band effect
+  (.addEventListener js/document "touchmove"
+    (fn [e]
+      (.preventDefault e))
+    #js {:passive false})
+
+  ;; Prevent double-tap zoom
+  (let [*last-touch-end (atom 0)]
+    (.addEventListener js/document "touchend"
+      (fn [e]
+        (let [now (js/Date.now)]
+          (when (<= (- now @*last-touch-end) 300)
+            (.preventDefault e))
+          (reset! *last-touch-end now)))))
+
+  ;; Prevent pinch zoom
+  (.addEventListener js/document "gesturestart"
+    (fn [e]
+      (.preventDefault e)))
+
+  ;; Prevent context menu
+  (add-event-listener canvas "contextmenu"
+    (fn [e]
+      (.preventDefault e)))
+
+  ;; event handlers
+  (add-watch *screen ::on-enter
+    (fn [_ _ old new]
+      (call-screen-fn-impl old :on-exit)
+      (call-screen-fn-impl new :on-enter)
+      (.clearRect ctx 0 0 canvas-w canvas-h)
+      (.clearRect notes-ctx 0 0 canvas-w canvas-h)
+      (call-screen-fn-impl new :on-render)))
+
+  (add-event-listener js/window "resize"
+    (fn [e]
+      (on-resize e)
+      (call-screen-fn :on-resize %)))
+
+  (add-event-listener js/window "keydown" #(call-screen-fn :on-key-down %))
+
+  (let [*start (atom nil)]
+    (add-event-listener canvas "touchstart"
+      (fn [e]
+        (.preventDefault e)
+        (let [[x y] (rel-coords (aget (.-touches e) 0))]
+          (reset! *start {:start-x x, :start-y y})
+          (call-screen-fn :on-pointer-down {:x x :y y :device :touch}))))
+
+    (add-event-listener canvas "touchmove"
+      (fn [e]
+        (.preventDefault e)
+        (let [[x y] (rel-coords (aget (.-touches e) 0))]
+          (call-screen-fn :on-pointer-move (merge @*start {:x x :y y :device :touch})))))
+
+    (add-event-listener canvas "touchend"
+      (fn [e]
+        (.preventDefault e)
+        (let [[x y] (rel-coords (aget (.-changedTouches e) 0))]
+          (call-screen-fn :on-pointer-up (merge @*start {:x x :y y :device :touch})))))
+
+    (add-event-listener canvas "mousedown"
+      (fn [e]
+        (when-some [device (case (.-button e)
+                             0 :mouse-left
+                             2 :mouse-right
+                             nil)]
+          (let [[x y] (rel-coords e)]
+            (reset! *start {:start-x x, :start-y y})
+            (call-screen-fn :on-pointer-down {:x x :y y :device device})))))
+
+    (add-event-listener canvas "mousemove"
+      (fn [e]
+        (when-some [device (case (.-buttons e)
+                             0 :mouse-hover
+                             1 :mouse-left
+                             2 :mouse-right
+                             3 :mouse-left
+                             nil)]
+          (let [[x y] (rel-coords e)]
+            (call-screen-fn :on-pointer-move (merge @*start {:x x :y y :device device}))))))
+
+    (add-event-listener canvas "mouseup"
+      (fn [e]
+        (when-some [button (case (.-button e)
+                             0 :mouse-left
+                             2 :mouse-right
+                             nil)]
+          (let [[x y] (rel-coords e)]
+            (call-screen-fn :on-pointer-up (merge @*start {:x x :y y :device button}))))))
+
+    (load-resources
+      #(let [hash   js/window.location.hash
+             hash   (if (str/blank? hash) nil (subs hash 1))
+             screen (str/split (or hash "level-select/[V]5x5") #"/")]
+         (reset! *screen screen)))))
+
+(add-event-listener js/window "load" on-load)

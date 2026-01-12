@@ -1,11 +1,11 @@
+- [ ] Random puzzle button
 - [ ] Drag flag from the cell
-- [ ] Split code into modules
 - [ ] Pencils/drawing
   - [x] Basic drawing
   - [ ] Erase with right mouse
   - [ ] Mouse down should erase a circle
   - [ ] Always draw till the current mouse positon
-- [ ] Puzzle in URL
+  - [ ] Undo
 - [ ] Open animation
 - [ ] Try highlighting cells instead of outline
 - [ ] Auto-open when zero
@@ -14,6 +14,8 @@
 - [ ] Game over screen
 - [ ] Expert mode
 - [ ] Setting screen
+- [x] Split code into modules
+- [x] Puzzle in URL
 - [x] Level select
 - [x] Save progression
 - [x] Remove unreachable

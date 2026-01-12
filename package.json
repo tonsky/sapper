@@ -2,7 +2,7 @@
   "name": "sapper",
   "version": "0.1.0",
   "description": "",
-  "main": "public/game.mjs",
+  "main": "public/main.mjs",
   "scripts": {
     "watch": "pnpm dlx squint-cljs watch",
     "serve": "pnpm dlx http-server public -p 8000 -c-1",
