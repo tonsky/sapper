@@ -417,7 +417,7 @@
       (or (.-altKey e) (.-ctrlKey e) (.-metaKey e) (.-shiftKey e))
       :noop
 
-      (= "1" key)
+      (#{"1" "d"} key)
       (on-tool-click :color1)
 
       (= "2" key)

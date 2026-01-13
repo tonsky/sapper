@@ -251,6 +251,11 @@
       (on-resize e)
       (call-screen-fn :on-resize e)))
 
+  (add-event-listener js/document "visibilitychange"
+    (fn [_]
+      (when-not (.-hidden js/document)
+        (request-render))))
+
   (add-event-listener js/window "keydown" #(call-screen-fn :on-key-down %))
 
   (let [*start (atom nil)]

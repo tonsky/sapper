@@ -10,12 +10,14 @@
 - [ ] Open animation
 - [ ] Try highlighting cells instead of outline
 - [ ] Sync progression
-- [x] Click to flag when count(closed) == label
-- [x] Click to open when 0 == label
 - [ ] Auto-open when zero
 - [ ] Game over screen
 - [ ] Expert mode
 - [ ] Setting screen
+- [ ] Render on visibilitychange
+- [x] 'd' key for drawing
+- [x] Click to flag when count(closed) == label
+- [x] Click to open when 0 == label
 - [x] Random puzzle button
 - [x] Split code into modules
 - [x] Puzzle in URL
