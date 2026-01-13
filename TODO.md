@@ -9,9 +9,10 @@
   - [x] Undo
 - [ ] Open animation
 - [ ] Try highlighting cells instead of outline
-- [ ] Auto-open when zero
 - [ ] Sync progression
-- [ ] Click to fill when count(closed) == label
+- [x] Click to flag when count(closed) == label
+- [x] Click to open when 0 == label
+- [ ] Auto-open when zero
 - [ ] Game over screen
 - [ ] Expert mode
 - [ ] Setting screen

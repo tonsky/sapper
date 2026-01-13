@@ -332,14 +332,18 @@
     (core/append-history (:id puzzle) :start))
   (let [key                         (key gx gy)
         {:keys [mine open flagged]} (get-cell gx gy)]
-    (when-not open
-      (cond
-        flagged (assoc! (get field key) :flagged false)
-        mine    (do
-                  (core/append-history (:id puzzle) :lose)
-                  (set! phase :game-over))
-        :else   (assoc! (get field key) :open true))
-      (update-field))))
+    (cond
+      open    :noop
+      flagged (do
+                (assoc! (get field key) :flagged false)
+                (update-field))
+      mine    (do
+                (core/append-history (:id puzzle) :lose)
+                (set! phase :game-over)
+                (core/request-render))
+      :else   (do
+                (assoc! (get field key) :open true)
+                (update-field)))))
 
 (defn flag-cell [gx gy phase-override]
   (when (= :new (or phase-override phase))
@@ -348,21 +352,14 @@
   (let [key                    (key gx gy)
         {:keys [flagged open]} (get-cell gx gy)]
     (cond
-      open
-      :noop
-
-      flagged
-      (do
-        (assoc! (get field key) :flagged false)
-        (update-field))
-
-      (<= flags 0)
-      :noop
-
-      :else
-      (do
-        (assoc! (get field key) :flagged true)
-        (update-field)))))
+      open         :noop
+      flagged      (do
+                     (assoc! (get field key) :flagged false)
+                     (update-field))
+      (<= flags 0) :noop
+      :else        (do
+                     (assoc! (get field key) :flagged true)
+                     (update-field)))))
 
 (defn reload []
   #_(reset! core/*screen @core/*screen)
@@ -488,7 +485,7 @@
             (>= num-points 2)
             (let [[x1 y1] (aget points (- num-points 1))
                   [x2 y2] (aget points (- num-points 2))
-                  dist (js/Math.hypot (- x1 x2) (- y1 y2))]
+                  dist    (js/Math.hypot (- x1 x2) (- y1 y2))]
               (< dist 5)))
         (aset points (dec num-points) [rel-x rel-y])
         (conj! points [rel-x rel-y]))))
@@ -509,7 +506,7 @@
         toolbox-x (quot (- canvas-w toolbox-w) 2)
         toolbox-y (+ grid-y grid-h 115)
         in?       #(core/both-inside? x y start-x start-y %1 %2 %3 %4 %5)]
-    (cond
+    (cond+
       ;; drop flag
       dragging-flag
       (do
@@ -555,6 +552,29 @@
         (set! outline-y nil)
         (core/request-render))
 
+      ;; auto-open neighbors if label matches unopened count
+      :let [cell (when (and gx gy) (get-cell gx gy))]
+
+      (and
+        (:open cell)
+        (re-matches #"\d+" (or (:label cell) ""))
+        (let [label-num (parse-long (:label cell))
+              nbs       (->> (neighbours gx gy)
+                          (remove (fn [[x y]] (processed (get-cell x y)))))]
+          (cond
+            (= (count nbs) label-num)
+            (do
+              (doseq [[i [nx ny]] (core/indexed nbs)]
+                (core/set-timeout (* i 50) #(flag-cell nx ny)))
+              true)
+
+            (= 0 label-num)
+            (do
+              (doseq [[i [nx ny]] (core/indexed nbs)]
+                (core/set-timeout (* i 50) #(open-cell nx ny)))
+              true))))
+      :noop
+
       ;; second click on outlined cell
       (and (= gx outline-x) (= gy outline-y))
       (do
@@ -563,7 +583,7 @@
         (core/request-render))
 
       ;; click on open cell
-      (:open (get-cell gx gy))
+      (:open cell)
       (do
         (set! outline-x gx)
         (set! outline-y gy)
@@ -571,12 +591,9 @@
 
       ;; click on closed cell
       :else
-      (let [key                 (key gx gy)
-            {:keys [mine open]} (get-cell gx gy)]
-        #_(println "on-grid-click" gx gy action mine open)
-        (case device
-          (:mouse-left :touch) (open-cell gx gy)
-          :mouse-right         (flag-cell gx gy))))))
+      (case device
+        (:mouse-left :touch) (open-cell gx gy)
+        :mouse-right         (flag-cell gx gy)))))
 
 (assoc! core/screens :game
   {:on-enter        on-enter
