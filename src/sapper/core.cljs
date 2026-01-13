@@ -6,7 +6,7 @@
 
 (def canvas nil)
 (def ctx nil)
-(def notes nil)
+(def notes-canvas nil)
 (def notes-ctx nil)
 (def canvas-w 0)
 (def canvas-h 0)
@@ -197,18 +197,18 @@
     (.resetTransform ctx)
     (.scale ctx canvas-scale canvas-scale)
 
-    (set! (.-width notes) dw)
-    (set! (.-height notes) dh)
+    (set! (.-width notes-canvas) dw)
+    (set! (.-height notes-canvas) dh)
     (.resetTransform notes-ctx)
     (.scale notes-ctx canvas-scale canvas-scale)
     (request-render)))
 
 (defn on-load []
   (println "core/on-load")
-  (set! canvas    (.querySelector js/document "#canvas"))
-  (set! ctx       (.getContext canvas "2d"))
-  (set! notes     (.querySelector js/document "#notes"))
-  (set! notes-ctx (.getContext notes "2d" #js {:willReadFrequently true}))
+  (set! canvas       (.querySelector js/document "#canvas"))
+  (set! ctx          (.getContext canvas "2d"))
+  (set! notes-canvas (.querySelector js/document "#notes"))
+  (set! notes-ctx    (.getContext notes-canvas "2d"))
   (on-resize)
   (maybe-upgrade-storage)
 

@@ -1,7 +1,7 @@
 (ns sapper.game
   (:require
    [clojure.string :as str]
-   [sapper.core :as core :refer [canvas ctx notes notes-ctx canvas-w canvas-h canvas-scale dpi images]]
+   [sapper.core :as core :refer [canvas ctx notes-ctx canvas-w canvas-h canvas-scale dpi images safe-area]]
    [sapper.level-select :as level-select])
   (:require-macros
    [sapper.macros :refer [defn-log cond+]]))
@@ -36,11 +36,8 @@
    :color2 "#3FC833"
    :color3 "#F44D44"
    :color4 "#25D0FF"})
-(def tool-drawing? false)
-(def tool-points [nil nil])
 (def tool-size 60)
-(def undo-buffer [])
-(def undo-depth 20)
+(def notes [])
 
 (declare open-cell flag-cell)
 
@@ -96,18 +93,10 @@
     (:flagged cell)
     (:open cell)))
 
-(defn save-undo-snapshot []
-  (let [image-data (.getImageData notes-ctx 0 0 (.-width notes) (.-height notes))]
-    (set! undo-buffer (vec (take-last undo-depth (conj undo-buffer image-data))))
-    #_(println "save-undo-snapshot ->" (count undo-buffer))))
-
 (defn undo []
-  (when (seq undo-buffer)
-    #_(println "undo ->" (dec (count undo-buffer)))
-    (let [prev-state (peek undo-buffer)]
-      (set! undo-buffer (pop undo-buffer))
-      (.putImageData notes-ctx prev-state 0 0)
-      (core/request-render))))
+  (when (seq notes)
+    (.pop notes)
+    (core/request-render)))
 
 (defn-log update-field []
   (doseq [[key cell] field
@@ -186,8 +175,7 @@
     (set! drag-y nil)
     (set! drag-device nil)
     (set! tool nil)
-    (set! tool-points [nil nil])
-    (set! undo-buffer [])))
+    (set! notes [])))
 
 (defn on-render []
   (let [[hover-x hover-y] (when (and drag-x drag-y)
@@ -289,6 +277,33 @@
                     img (get images (str "tool_" t (if (= t tool) "_selected" "") ".png"))]]
         (.drawImage ctx img (- x tool-margin) (- y tool-margin) sprite-size sprite-size)))
 
+    ;; Draw notes
+    (.clearRect notes-ctx 0 0 canvas-w canvas-h)
+    (let [[sa-x sa-y] safe-area]
+      (doseq [stroke notes
+              :let [t         (:tool stroke)
+                    points    (:points stroke)
+                    nth-point #(let [[x y] (aget points %)]
+                                 [(+ x sa-x) (+ y sa-y)])]]
+        (when (seq points)
+          (set! (.-lineWidth notes-ctx) (case t :eraser 40 6))
+          (set! (.-strokeStyle notes-ctx) (get tool-colors t "#000"))
+          (set! (.-lineCap notes-ctx) "round")
+          (set! (.-lineJoin notes-ctx) "round")
+          (set! (.-globalCompositeOperation notes-ctx) (case t :eraser "destination-out" "source-over"))
+          (.beginPath notes-ctx)
+          (let [[x y] (nth-point 0)]
+            (.moveTo notes-ctx x y))
+          (dotimes [i (dec (count points))]
+            (let [[x1 y1] (nth-point i)
+                  [x2 y2] (nth-point (inc i))]
+              (.quadraticCurveTo notes-ctx x1 y1 (/ (+ x1 x2) 2) (/ (+ y1 y2) 2))))
+          (let [[x y] (nth-point (dec (count points)))]
+            (.lineTo notes-ctx x y))
+
+          (.stroke notes-ctx)
+          (set! (.-globalCompositeOperation notes-ctx) "source-over"))))
+
     ;; Eraser cursor
     (when (and drag-x drag-y
             (or
@@ -376,16 +391,17 @@
 
     :clear
     (do
-      (save-undo-snapshot)
-      (aset tool-points 0 nil)
-      (aset tool-points 1 nil)
-      (.clearRect notes-ctx 0 0 canvas-w canvas-h)
+      (set! notes [])
       (core/request-render))
 
     (:eraser :color1 :color2 :color3 :color4)
     (do
       (if (= tool tool')
-        (set! tool nil)
+        (do
+          (set! tool nil)
+          (set! drag-x nil)
+          (set! drag-y nil)
+          (set! drag-device nil))
         (set! tool tool'))
       (core/request-render))))
 
@@ -427,8 +443,17 @@
 
       (= "Escape" key)
       (do
-        (set! tool nil)
-        (core/request-render)))))
+        (cond
+          tool
+          (do
+            (set! tool nil)
+            (core/request-render))
+
+          (and outline-x outline-y)
+          (do
+            (set! outline-x nil)
+            (set! outline-y nil)
+            (core/request-render)))))))
 
 (defn on-pointer-down [{:keys [x y device]}]
   (set! drag-x x)
@@ -437,14 +462,7 @@
   (cond+
     tool
     (let [tool' (if (= :mouse-right device) :eraser tool)]
-      (set! (.-lineWidth notes-ctx) (case tool' :eraser 40 6))
-      (set! (.-strokeStyle notes-ctx) (get tool-colors tool' "#000"))
-      (set! (.-lineCap notes-ctx) "round")
-      (set! (.-lineJoin notes-ctx) "round")
-      (set! (.-globalCompositeOperation notes-ctx) (case tool' :eraser "destination-out" "source-over"))
-      (set! tool-drawing? false)
-      (aset tool-points 0 nil)
-      (aset tool-points 1 [x y])
+      (conj! notes {:tool tool' :points []})
       (core/request-render))
 
     :let [[l t w h] (flag-area)]
@@ -459,22 +477,21 @@
       (core/request-render))))
 
 (defn on-pointer-move [{:keys [x y device]}]
-  (when (and (#{:mouse-left :mouse-right :touch} device) tool)
-    (let [[x0 y0] (aget tool-points 0)
-          [x1 y1] (aget tool-points 1)]
-      (when (and x1 y1 (>= (js/Math.hypot (- x x1) (- y y1)) 5))
-        (when (and (nil? x0) (nil? y0) x1 y1)
-          (.beginPath notes-ctx)
-          (.moveTo notes-ctx x1 y1))
-        (when (and x0 y0 x1 y1)
-          (when (not tool-drawing?)
-            (save-undo-snapshot)
-            (set! tool-drawing? true))
-          (.quadraticCurveTo notes-ctx x1 y1 (/ (+ x1 x) 2) (/ (+ y1 y) 2))
-          #_(.lineTo notes-ctx x y)
-          (.stroke notes-ctx))
-        (aset tool-points 0 [x1 y1])
-        (aset tool-points 1 [x y]))))
+  (when (and (#{:mouse-left :mouse-right :touch} device) tool (seq notes))
+    (let [[sa-x sa-y] safe-area
+          last-stroke (aget notes (dec (count notes)))
+          points      (:points last-stroke)
+          rel-x       (- x sa-x)
+          rel-y       (- y sa-y)
+          num-points  (count points)]
+      (if (and
+            (>= num-points 2)
+            (let [[x1 y1] (aget points (- num-points 1))
+                  [x2 y2] (aget points (- num-points 2))
+                  dist (js/Math.hypot (- x1 x2) (- y1 y2))]
+              (< dist 5)))
+        (aset points (dec num-points) [rel-x rel-y])
+        (conj! points [rel-x rel-y]))))
   (when (or
           (= :eraser tool)
           (and (#{:mouse-left :mouse-right :touch} device) tool)
@@ -521,10 +538,11 @@
       (load-random-puzzle)
 
       tool
-      (do
-        (aset tool-points 0 nil)
-        (aset tool-points 1 nil)
-        (core/request-render))
+      (when (seq notes)
+        (let [last-stroke (aget notes (dec (.-length notes)))
+              points      (:points last-stroke)]
+          (when (<= (count points) 1)
+            (.pop notes))))
 
       ;; end game
       (#{:game-over :victory} phase)

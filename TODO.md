@@ -3,7 +3,9 @@
   - [x] Basic drawing
   - [x] Erase with right mouse
   - [ ] Mouse down should erase a circle
-  - [ ] Always draw till the current mouse positon
+  - [x] Always draw till the current mouse position
+  - [x] Switch to redrawing entire path
+  - [x] Scale notes on resize
   - [x] Undo
 - [ ] Open animation
 - [ ] Try highlighting cells instead of outline

@@ -1,6 +1,6 @@
 (ns sapper.loading
   (:require
-   [sapper.core :as core :refer [ctx notes-ctx canvas-w canvas-h]]))
+   [sapper.core :as core :refer [ctx canvas-w canvas-h]]))
 
 (defn on-render []
   (set! (.-font ctx) "24px sans-serif")
