@@ -18,7 +18,6 @@
 (def images {})
 (def puzzles-by-id {})
 (def puzzles-by-type {})
-(def t0 (.getTime (Date. "2025-01-01")))
 (def sync-id
   (or (js/localStorage.getItem "sapper/id")
       (let [chars "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -97,7 +96,7 @@
     (inside? x2 y2 l t w h margin)))
 
 (defn parse-puzzle [puzzle]
-  (let [[_ id type code] (re-find #"(([^ -]+)[^ ]+) +([foqFOQ]+)" puzzle)]
+  (let [[_ id type code] (re-find #"(([^ -]+-[^ -]+)-[^ -]+) +([foqFOQ]+)" puzzle)]
     {:id   id
      :type type
      :code code}))
@@ -137,20 +136,30 @@
 
 ;; STORAGE
 
-(defn get-history []
-  (vec
-    (for [line (str/split (or (js/localStorage.getItem "sapper/h") "") #"\n")
-          :when (not (str/blank? line))
-          :let [[id op t] (str/split line #"\s")]]
-      {:id   id
-       :op   (case op "s" :start "l" :lose "w" :win)
-       :date (Date. (* (+ t t0) 1000))})))
+(def t0
+  (.getTime (Date. "2025-01-01")))
 
-(defn puzzle-statuses []
+(defn date->short-date [t]
+  (-> t (- t0) (/ 1000) js/Math.floor))
+
+(defn short-date->date [t]
+  (-> t (* 1000) (+ t0) js/Date.))
+
+(defn get-history [type]
+  (let [key (str "sapper/h/" type)]
+    (vec
+      (for [line (str/split (or (js/localStorage.getItem key) "") #"\n")
+            :when (not (str/blank? line))
+            :let [[t short-id op] (str/split line #"\s")]]
+        {:id   (str type "-" short-id)
+         :op   (case op "s" :start "l" :lose "w" :win)
+         :date (short-date->date t)}))))
+
+(defn puzzle-statuses [type]
   (let [won     #{}
         started #{}
         lost    #{}]
-    (doseq [{:keys [op id]} (get-history)]
+    (doseq [{:keys [op id]} (get-history type)]
       (case op
         :win   (.add won id)
         :start (.add started id)
@@ -158,10 +167,17 @@
         nil))
     {:won won :started started :lost lost}))
 
+(defn split-puzzle-id [id]
+  (next (re-matches #"([^ -]+-[^ -]+)-([^ -]+)" id)))
+
 (defn append-history [id op]
-  (let [v  (or (js/localStorage.getItem "sapper/h") "")
-        v' (str v id " " (subs op 0 1) " " (-> (js/Date.now) (- t0) (/ 1000) js/Math.floor) "\n")]
-    (js/localStorage.setItem "sapper/h" v')))
+  (let [[type short-id] (split-puzzle-id id)
+        key             (str "sapper/h/" type)
+        v               (or (js/localStorage.getItem key) "")
+        t'              (date->short-date (js/Date.now))
+        op'             (subs op 0 1)
+        v'              (str v t' " " short-id " " op' "\n")]
+    (js/localStorage.setItem key v')))
 
 (defn upgrade-storage-v1 []
   (let [history (-> (or (js/localStorage.getItem "history") "")
@@ -175,10 +191,23 @@
     (js/localStorage.setItem "sapper/v" "2")
     (js/localStorage.removeItem "history")))
 
+(defn upgrade-storage-v2 []
+  (let [result {}]
+    (doseq [line (str/split (or (js/localStorage.getItem "sapper/h") "") #"\n")
+            :when (not (str/blank? line))
+            :let [[_ type id op t] (re-find #"([^ -]+-[^ -]+)-([^ -]+) ([a-z]) (\d+)" line)]]
+      (assoc! result type (str (get result type "") t " " id " " op "\n")))
+    (doseq [[type value] result]
+      (js/localStorage.setItem (str "sapper/h/" type) value))
+    (js/localStorage.removeItem "sapper/h")
+    (js/localStorage.setItem "sapper/v" "3")))
+
 (defn maybe-upgrade-storage []
   (let [v (-> (js/localStorage.getItem "sapper/v") (or "1") parse-long)]
     (when (<= v 1)
-      (upgrade-storage-v1))))
+      (upgrade-storage-v1))
+    (when (<= v 2)
+      (upgrade-storage-v2))))
 
 ;; EVENTS
 
@@ -321,7 +350,7 @@
     (load-resources
       #(let [hash   js/window.location.hash
              hash   (if (str/blank? hash) nil (subs hash 1))
-             screen (str/split (or hash "level-select/[V]5x5") #"/")]
+             screen (str/split (or hash "level-select/[V]5x5-10") #"/")]
          (reset! *screen screen)))))
 
 (add-event-listener js/window "load" on-load)

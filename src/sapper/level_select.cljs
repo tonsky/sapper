@@ -13,11 +13,11 @@
 (defn set-tab [t]
   (set! tab t)
   (set! js/window.location.hash (str "level-select/" tab))
+  (set! statuses (core/puzzle-statuses t))
   (core/request-render))
 
 (defn on-enter []
-  (set-tab (second @core/*screen))
-  (set! statuses (core/puzzle-statuses)))
+  (set-tab (second @core/*screen)))
 
 (defn on-render []
   (let [[left top _ _] core/safe-area
@@ -50,14 +50,14 @@
     (doseq [[x key] (->> core/puzzles-by-type keys sort core/indexed)]
       (set! (.-fillStyle ctx) (if (= tab key) "#fff" "#2e4d6f"))
       (.beginPath ctx)
-      (.roundRect ctx (+ left 110 (* x 90)) (+ top 760) 70 50 4)
+      (.roundRect ctx (+ left 60 (* x 120)) (+ top 760) 100 50 4)
       (.fill ctx)
 
       (set! (.-font ctx) "16px sans-serif")
       (set! (.-textAlign ctx) "center")
       (set! (.-textBaseline ctx) "middle")
       (set! (.-fillStyle ctx) (if (= tab key) "#2e4d6f" "#fff"))
-      (.fillText ctx key (+ left 110 35 (* x 90)) (+ top 760 25)))))
+      (.fillText ctx key (+ left 60 50 (* x 120)) (+ top 760 25)))))
 
 (defn mouse->idx [x y]
   (let [[left top _ _] core/safe-area]
@@ -86,22 +86,22 @@
         (let [id (-> core/puzzles-by-type (get tab) (nth idx) :id)]
           (reset! core/*screen [:game id])))
 
-      (in? 110 760 70 50 10)
-      (set-tab "[V]5x5")
+      (in? 60 760 100 50 10)
+      (set-tab "[V]5x5-10")
 
-      (in? (+ 110 (* 1 90)) 760 70 50 10)
-      (set-tab "[V]6x6")
+      (in? (+ 60 (* 1 120)) 760 100 50 10)
+      (set-tab "[V]6x6-14")
 
-      (in? (+ 110 (* 2 90)) 760 70 50 10)
-      (set-tab "[V]7x7")
+      (in? (+ 60 (* 2 120)) 760 100 50 10)
+      (set-tab "[V]7x7-20")
 
-      (in? (+ 110 (* 3 90)) 760 70 50 10)
-      (set-tab "[V]8x8"))))
+      (in? (+ 60 (* 3 120)) 760 100 50 10)
+      (set-tab "[V]8x8-26"))))
 
 (assoc! core/screens :level-select
   {:on-enter        on-enter
    :on-render       on-render
    :on-pointer-move on-pointer-move
    :on-pointer-up   on-pointer-up
-   :resources       #{"v5.txt" "v6.txt" "v7.txt" "v8.txt"
+   :resources       #{"[V]5x5-10.txt" "[V]6x6-14.txt" "[V]7x7-20.txt" "[V]8x8-26.txt"
                       "level_select.png"}})
