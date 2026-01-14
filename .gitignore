@@ -2,3 +2,4 @@ node_modules
 /public/sapper/*.mjs
 *.sync-conflict-*
 .syncthing.*
+/sync

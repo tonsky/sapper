@@ -184,8 +184,8 @@
     (let [id (:id puzzle)]
       (set! (.-font ctx) "10px sans-serif")
       (set! (.-textAlign ctx) "left")
-      (set! (.-fillStyle ctx) "#284E6D")
-      (.fillText ctx id 13 35))
+      (set! (.-fillStyle ctx) "#477397")
+      (.fillText ctx id 13 47))
 
     ;; buttons
     (.drawImage ctx (get images "btn_back.png") (- canvas-w 250) 0 sprite-size sprite-size)

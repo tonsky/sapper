@@ -19,6 +19,12 @@
 (def puzzles-by-id {})
 (def puzzles-by-type {})
 (def t0 (.getTime (Date. "2025-01-01")))
+(def sync-id
+  (or (js/localStorage.getItem "sapper/id")
+      (let [chars "abcdefghijklmnopqrstuvwxyz0123456789"
+            id    (apply str (repeatedly 13 #(get chars (rand-int (count chars)))))]
+        (js/localStorage.setItem "sapper/id" id)
+        id)))
 
 ;; RENDERING
 
@@ -60,9 +66,10 @@
 
   ;; viewport size
   (set! (.-font ctx) "10px sans-serif")
-  (set! (.-fillStyle ctx) "#284E6D")
+  (set! (.-fillStyle ctx) "#477397")
   (set! (.-textAlign ctx) "left")
   (.fillText ctx (str canvas-w "×" canvas-h "@" canvas-scale) 13 23)
+  (.fillText ctx sync-id 13 35)
 
   (call-screen-fn :on-render))
 
@@ -156,19 +163,22 @@
         v' (str v id " " (subs op 0 1) " " (-> (js/Date.now) (- t0) (/ 1000) js/Math.floor) "\n")]
     (js/localStorage.setItem "sapper/h" v')))
 
+(defn upgrade-storage-v1 []
+  (let [history (-> (or (js/localStorage.getItem "history") "")
+                  (str/split #"\n")
+                  (->> (remove str/blank?)
+                    (mapv js/JSON.parse)))
+        history' (for [{:keys [id op date]} history]
+                   (str "[V]5x5-10-" id " " (subs op 0 1) " " (-> date (- t0) (/ 1000) js/Math.floor)))]
+    #_(println (str/join "\n" history'))
+    (js/localStorage.setItem "sapper/h" (str (str/join "\n" history') "\n"))
+    (js/localStorage.setItem "sapper/v" "2")
+    (js/localStorage.removeItem "history")))
+
 (defn maybe-upgrade-storage []
   (let [v (-> (js/localStorage.getItem "sapper/v") (or "1") parse-long)]
     (when (<= v 1)
-      (let [history (-> (or (js/localStorage.getItem "history") "")
-                      (str/split #"\n")
-                      (->> (remove str/blank?)
-                        (mapv js/JSON.parse)))
-            history' (for [{:keys [id op date]} history]
-                       (str "[V]5x5-10-" id " " (subs op 0 1) " " (-> date (- t0) (/ 1000) js/Math.floor)))]
-        #_(println (str/join "\n" history'))
-        (js/localStorage.setItem "sapper/h" (str (str/join "\n" history') "\n"))
-        (js/localStorage.setItem "sapper/v" "2")
-        (js/localStorage.removeItem "history")))))
+      (upgrade-storage-v1))))
 
 ;; EVENTS
 
