@@ -14,6 +14,10 @@
   (set! tab t)
   (set! js/window.location.hash (str "level-select/" tab))
   (set! statuses (core/puzzle-statuses t))
+  (core/sync-history t
+    (fn [_]
+      (set! statuses (core/puzzle-statuses t))
+      (core/render)))
   (core/request-render))
 
 (defn on-enter []

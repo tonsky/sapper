@@ -1,3 +1,4 @@
+- [ ] Screen for copy/paste sync id
 - [ ] Unflag by dragging from cell
 - [ ] Pencils/drawing
   - [x] Basic drawing
@@ -9,12 +10,12 @@
   - [x] Undo
 - [ ] Open animation
 - [ ] Try highlighting cells instead of outline
-- [ ] Sync progression
 - [ ] Auto-open when zero
 - [ ] Game over screen
 - [ ] Expert mode
 - [ ] Setting screen
-- [ ] Render on visibilitychange
+- [x] Render on visibilitychange
+- [x] Sync progression
 - [x] 'd' key for drawing
 - [x] Click to flag when count(closed) == label
 - [x] Click to open when 0 == label

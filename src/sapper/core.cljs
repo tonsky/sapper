@@ -53,6 +53,8 @@
   (apply call-screen-fn-impl @*screen name args))
 
 (defn render []
+  (reset! *render-requested false)
+
   (set! (.-fillStyle ctx) "#0E2E4E")
   (.fillRect ctx 0 0 canvas-w canvas-h)
 
@@ -74,7 +76,6 @@
 
 (defn maybe-render []
   (when @*render-requested
-    (reset! *render-requested false)
     (render)))
 
 ;; UTILS
@@ -145,15 +146,20 @@
 (defn short-date->date [t]
   (-> t (* 1000) (+ t0) js/Date.))
 
+(defn history-key [type]
+  (str "sapper/history-" type))
+
+(defn valid-history-line? [line]
+  (and line (re-matches #"\d+ \w+ \w" line)))
+
 (defn get-history [type]
-  (let [key (str "sapper/h/" type)]
-    (vec
-      (for [line (str/split (or (js/localStorage.getItem key) "") #"\n")
-            :when (not (str/blank? line))
-            :let [[t short-id op] (str/split line #"\s")]]
-        {:id   (str type "-" short-id)
-         :op   (case op "s" :start "l" :lose "w" :win)
-         :date (short-date->date t)}))))
+  (vec
+    (for [line (str/split (or (js/localStorage.getItem (history-key type)) "") #"\n")
+          :when (valid-history-line? line)
+          :let [[t short-id op] (str/split line #"\s")]]
+      {:id   (str type "-" short-id)
+       :op   (case op "s" :start "l" :lose "w" :win)
+       :date (short-date->date t)})))
 
 (defn puzzle-statuses [type]
   (let [won     #{}
@@ -170,14 +176,51 @@
 (defn split-puzzle-id [id]
   (next (re-matches #"([^ -]+-[^ -]+)-([^ -]+)" id)))
 
+(defn sync-history [type cb]
+  (let [key (history-key type)
+        url (str "https://sapper.tonsky.me/sync/" sync-id "/history-" type ".txt")]
+    (-> (js/fetch url)
+      (.then (fn [response]
+               (if (.-ok response)
+                 (.text response)
+                 "")))
+      (.catch (fn [_] ""))
+      (.then
+        (fn [server-history]
+          (let [merged-lines   (->> (str/split server-history #"\n")
+                                 (filter valid-history-line?)
+                                 (into #{}))
+                local-history  (or (js/localStorage.getItem key) "")
+                _              (doseq [line  (str/split local-history #"\n")
+                                       :when (valid-history-line? line)]
+                                 (conj! merged-lines line))
+                sorted-lines   (->> merged-lines
+                                 vec
+                                 (sort-by
+                                   (fn [line]
+                                     (parse-long (or (first (re-find #"^\d+" line)) "0")))))
+                merged-history (if (seq sorted-lines)
+                                 (str (str/join "\n" sorted-lines) "\n")
+                                 "")]
+
+            (when (not= merged-history server-history)
+              (js/fetch url
+                #js {:method  "PUT"
+                     :body    merged-history
+                     :headers #js {"Content-Type" "text/plain"}}))
+
+            (when (not= merged-history local-history)
+              (js/localStorage.setItem key merged-history)
+              (cb merged-history))))))))
+
 (defn append-history [id op]
   (let [[type short-id] (split-puzzle-id id)
-        key             (str "sapper/h/" type)
-        v               (or (js/localStorage.getItem key) "")
+        v               (or (js/localStorage.getItem (history-key type)) "")
         t'              (date->short-date (js/Date.now))
         op'             (subs op 0 1)
         v'              (str v t' " " short-id " " op' "\n")]
-    (js/localStorage.setItem key v')))
+    (js/localStorage.setItem (history-key type) v')
+    (sync-history type)))
 
 (defn upgrade-storage-v1 []
   (let [history (-> (or (js/localStorage.getItem "history") "")
@@ -198,7 +241,7 @@
             :let [[_ type id op t] (re-find #"([^ -]+-[^ -]+)-([^ -]+) ([a-z]) (\d+)" line)]]
       (assoc! result type (str (get result type "") t " " id " " op "\n")))
     (doseq [[type value] result]
-      (js/localStorage.setItem (str "sapper/h/" type) value))
+      (js/localStorage.setItem (str "sapper/history-" type) value))
     (js/localStorage.removeItem "sapper/h")
     (js/localStorage.setItem "sapper/v" "3")))
 
