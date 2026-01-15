@@ -288,7 +288,8 @@
 
             (when (not= merged-history local-history)
               (js/localStorage.setItem key merged-history)
-              (cb merged-history))))))))
+              (when cb
+                (cb merged-history)))))))))
 
 (defn append-history [id op]
   (let [[type short-id] (split-puzzle-id id)
@@ -422,27 +423,30 @@
 
   (add-event-listener js/window "keydown" #(call-screen-fn :on-key-down %))
 
-  (let [*start (atom nil)]
+  (let [*start  (atom nil)
+        *device (atom nil)]
     (add-event-listener canvas "touchstart"
       (fn [e]
         (.preventDefault e)
         (let [[x y] (rel-coords (aget (.-touches e) 0))]
           (set! pointer-pos [x y])
           (reset! *start {:start-x x, :start-y y})
-          (call-screen-fn :on-pointer-down {:x x :y y :device :touch}))))
+          (reset! *device :touch)
+          (call-screen-fn :on-pointer-down {:x x :y y :device @*device}))))
 
     (add-event-listener canvas "touchmove"
       (fn [e]
         (.preventDefault e)
         (let [[x y] (rel-coords (aget (.-touches e) 0))]
           (set! pointer-pos [x y])
-          (call-screen-fn :on-pointer-move (merge @*start {:x x :y y :device :touch})))))
+          (call-screen-fn :on-pointer-move (merge @*start {:x x :y y :device @*device})))))
 
     (add-event-listener canvas "touchend"
       (fn [e]
         (.preventDefault e)
         (let [[x y] (rel-coords (aget (.-changedTouches e) 0))]
-          (call-screen-fn :on-pointer-up (merge @*start {:x x :y y :device :touch})))))
+          (call-screen-fn :on-pointer-up (merge @*start {:x x :y y :device @*device}))
+          (reset! *device nil))))
 
     (add-event-listener canvas "mousedown"
       (fn [e]
@@ -453,33 +457,27 @@
           (let [[x y] (rel-coords e)]
             (set! pointer-pos [x y])
             (reset! *start {:start-x x, :start-y y})
-            (call-screen-fn :on-pointer-down {:x x :y y :device device})))))
+            (reset! *device device)
+            (call-screen-fn :on-pointer-down {:x x :y y :device @*device})))))
 
     (add-event-listener canvas "mousemove"
       (fn [e]
-        (when-some [device (case (.-buttons e)
-                             0 :mouse-hover
-                             1 :mouse-left
-                             2 :mouse-right
-                             3 :mouse-left
-                             nil)]
+        (when-some [device (or @*device :mouse-hover)]
           (let [[x y] (rel-coords e)]
             (set! pointer-pos [x y])
             (call-screen-fn :on-pointer-move (merge @*start {:x x :y y :device device}))))))
 
     (add-event-listener canvas "mouseup"
       (fn [e]
-        (when-some [button (case (.-button e)
-                             0 :mouse-left
-                             2 :mouse-right
-                             nil)]
+        (when-some [device @*device]
           (let [[x y] (rel-coords e)]
-            (call-screen-fn :on-pointer-up (merge @*start {:x x :y y :device button}))))))
+            (call-screen-fn :on-pointer-up (merge @*start {:x x :y y :device device}))
+            (reset! *device nil)))))
 
     (let [navigate (fn [_e]
                      (let [hash   js/window.location.hash
                            hash   (if (str/blank? hash) nil (subs hash 1))
-                           screen (str/split (or hash "level-select/[V]5x5-10") #"/")]
+                           screen (str/split (or hash "menu") #"/")]
                        (reset! *screen screen)))]
       (add-event-listener js/window "hashchange" navigate)
       (load-resources navigate))))

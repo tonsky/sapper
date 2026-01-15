@@ -526,14 +526,13 @@
 
   (when (and (#{:mouse-left :mouse-right :touch} device) tool (seq notes))
     (let [[sa-x sa-y] safe-area
-          last-stroke (aget notes (dec (count notes)))
-          points      (:points last-stroke)
+          points      (:points (last notes))
           rel-x       (- x sa-x)
           rel-y       (- y sa-y)
           num-points  (count points)]
-      (if (and
-            (>= num-points 2)
-            (< (core/dist (last points) (core/penultimate points)) 5))
+      (if false #_(and
+                    (>= num-points 2)
+                    (< (core/dist (last points) (core/penultimate points)) 5))
         (aset points (dec num-points) [rel-x rel-y])
         (conj! points [rel-x rel-y]))))
   (when (or
