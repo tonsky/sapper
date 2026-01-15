@@ -39,9 +39,16 @@
    :color4 "#25D0FF"})
 (def tool-size 60)
 (def notes [])
-(def anim-start 0)
 
-(declare open-cell flag-cell)
+(def anim-start 0)
+(def anim-length 300)
+
+(def auto-open-queue [])
+(def auto-open-dt 50)
+(def auto-opened #{})
+(def auto-open-timer nil)
+
+(declare open-cell flag-cell maybe-auto-open)
 
 (defn neighbours [x y]
   (concat
@@ -180,8 +187,7 @@
     (js/requestAnimationFrame #(core/render))))
 
 (defn on-render []
-  (let [anim-length       300
-        anim-progress     (core/clamp (/ (- (js/Date.now) anim-start) anim-length) 0 1)
+  (let [anim-progress     (core/clamp (/ (- (js/Date.now) anim-start) anim-length) 0 1)
         [hover-x hover-y] (when (and drag-x drag-y)
                             (field-coords drag-x drag-y))
         id                (:id puzzle)]
@@ -357,7 +363,8 @@
                 (core/request-render))
       :else   (do
                 (assoc! (get field key) :open true)
-                (update-field)))))
+                (update-field)
+                (maybe-auto-open gx gy)))))
 
 (defn flag-cell [gx gy]
   (when (= :new phase)
@@ -374,6 +381,60 @@
       :else        (do
                      (assoc! (get field key) :flagged true)
                      (update-field)))))
+
+(defn request-auto-open [cells]
+  (when (seq cells)
+    (set! auto-open-queue (into (vec auto-open-queue) cells))
+    (when-not auto-open-timer
+      (set! auto-open-timer (core/set-timeout auto-open-dt auto-open)))))
+
+(defn auto-open []
+  (if (seq auto-open-queue)
+    (let [[op x y] (first auto-open-queue)
+          cell (get-cell x y)]
+      (set! auto-open-queue (rest auto-open-queue))
+      (cond
+        (or (:open cell) (:flagged cell))
+        (auto-open)
+
+        (= :open op)
+        (do
+          (open-cell x y)
+          (conj! auto-opened (key x y))
+          (set! auto-open-timer (core/set-timeout auto-open-dt auto-open)))
+
+        (= :flag op)
+        (do
+          (flag-cell x y)
+          (set! auto-open-timer (core/set-timeout auto-open-dt auto-open)))))
+    (if (seq auto-opened)
+      (let [cells auto-opened]
+        (set! auto-opened #{})
+        (set! auto-open-timer nil)
+        (doseq [key cells
+                :let [[x y] (parse-key key)]]
+          (maybe-auto-open x y))
+        (auto-open))
+      (set! auto-open-timer nil))))
+
+(defn maybe-auto-open [gx gy]
+  (let [cell (get-cell gx gy)]
+    (when (and
+            (:open cell)
+            (re-matches #"\d+" (or (:label cell) "")))
+      (let [label-num (parse-long (:label cell))
+            nbs       (->> (neighbours gx gy)
+                        (remove (fn [[x y]] (processed (get-cell x y)))))]
+        (cond
+          (= (count nbs) label-num)
+          (do
+            (request-auto-open (map (fn [[x y]] [:flag x y]) nbs))
+            true)
+
+          (= 0 label-num)
+          (do
+            (request-auto-open (map (fn [[x y]] [:open x y]) nbs))
+            true))))))
 
 (defn on-tool-click [tool']
   (case tool'
@@ -550,26 +611,7 @@
         (core/request-render))
 
       ;; auto-open neighbors if label matches unopened count
-      :let [cell (when (and gx gy) (get-cell gx gy))]
-
-      (and
-        (:open cell)
-        (re-matches #"\d+" (or (:label cell) ""))
-        (let [label-num (parse-long (:label cell))
-              nbs       (->> (neighbours gx gy)
-                          (remove (fn [[x y]] (processed (get-cell x y)))))]
-          (cond
-            (= (count nbs) label-num)
-            (do
-              (doseq [[i [nx ny]] (core/indexed nbs)]
-                (core/set-timeout (* i 100) #(flag-cell nx ny)))
-              true)
-
-            (= 0 label-num)
-            (do
-              (doseq [[i [nx ny]] (core/indexed nbs)]
-                (core/set-timeout (* i 100) #(open-cell nx ny)))
-              true))))
+      (maybe-auto-open gx gy)
       :noop
 
       ;; second click on outlined cell
@@ -580,6 +622,8 @@
         (core/request-render))
 
       ;; click on open cell
+      :let [cell (when (and gx gy) (get-cell gx gy))]
+
       (:open cell)
       (do
         (set! outline-x gx)
