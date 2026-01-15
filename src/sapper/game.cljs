@@ -44,9 +44,8 @@
 (def anim-length 300)
 
 (def auto-open-queue [])
-(def auto-open-dt 50)
-(def auto-opened #{})
 (def auto-open-timer nil)
+(def auto-open-dt 32.333333)
 
 (declare open-cell flag-cell maybe-auto-open)
 
@@ -362,6 +361,7 @@
                 (set! phase :game-over)
                 (core/request-render))
       :else   (do
+                #_(println (- (js/Date.now) t0) "open" gx gy)
                 (assoc! (get field key) :open true)
                 (update-field)
                 (maybe-auto-open gx gy)))))
@@ -379,62 +379,50 @@
                      (update-field))
       (<= flags 0) :noop
       :else        (do
+                     #_(println (- (js/Date.now) t0) "flag" gx gy)
                      (assoc! (get field key) :flagged true)
                      (update-field)))))
 
-(defn request-auto-open [cells]
-  (when (seq cells)
-    (set! auto-open-queue (into (vec auto-open-queue) cells))
-    (when-not auto-open-timer
-      (set! auto-open-timer (core/set-timeout auto-open-dt auto-open)))))
-
-(defn auto-open []
-  (if (seq auto-open-queue)
-    (let [[op x y] (first auto-open-queue)
-          cell (get-cell x y)]
-      (set! auto-open-queue (rest auto-open-queue))
-      (cond
-        (or (:open cell) (:flagged cell))
-        (auto-open)
-
-        (= :open op)
-        (do
-          (open-cell x y)
-          (conj! auto-opened (key x y))
-          (set! auto-open-timer (core/set-timeout auto-open-dt auto-open)))
-
-        (= :flag op)
-        (do
-          (flag-cell x y)
-          (set! auto-open-timer (core/set-timeout auto-open-dt auto-open)))))
-    (if (seq auto-opened)
-      (let [cells auto-opened]
-        (set! auto-opened #{})
-        (set! auto-open-timer nil)
-        (doseq [key cells
-                :let [[x y] (parse-key key)]]
-          (maybe-auto-open x y))
-        (auto-open))
-      (set! auto-open-timer nil))))
-
-(defn maybe-auto-open [gx gy]
+(defn can-auto-open [gx gy]
   (let [cell (get-cell gx gy)]
     (when (and
             (:open cell)
             (re-matches #"\d+" (or (:label cell) "")))
       (let [label-num (parse-long (:label cell))
             nbs       (->> (neighbours gx gy)
-                        (remove (fn [[x y]] (processed (get-cell x y)))))]
+                        (remove (fn [[x y]] (processed (get-cell x y))))
+                        vec)]
         (cond
-          (= (count nbs) label-num)
-          (do
-            (request-auto-open (map (fn [[x y]] [:flag x y]) nbs))
-            true)
+          (empty? nbs)              nil
+          (= (count nbs) label-num) [:flag nbs]
+          (= 0 label-num)           [:open nbs])))))
 
-          (= 0 label-num)
-          (do
-            (request-auto-open (map (fn [[x y]] [:open x y]) nbs))
-            true))))))
+(defn auto-open []
+  (loop [queue auto-open-queue]
+    (if-some [[x y] (first queue)]
+      (if-some [[op nbs] (can-auto-open x y)]
+        (let [[[nx ny] & _] nbs
+              old-set       (set (map key auto-open-queue))
+              all-new-nbs   (remove #(contains? old-set (key %)) (neighbours nx ny))]
+          (case op
+            :open (open-cell nx ny)
+            :flag (flag-cell nx ny))
+          (set! auto-open-queue (concat auto-open-queue all-new-nbs))
+          (set! auto-open-timer (core/set-timeout auto-open-dt auto-open)))
+        (recur (next queue)))
+      (do
+        (set! auto-open-queue [])
+        (set! auto-open-timer nil)))))
+
+(defn request-auto-open [cells]
+  (when-not auto-open-timer
+    (set! auto-open-timer (core/set-timeout auto-open-dt auto-open))))
+
+(defn maybe-auto-open [gx gy]
+  (when (can-auto-open gx gy)
+    (set! auto-open-queue (conj auto-open-queue [gx gy]))
+    (request-auto-open)
+    true))
 
 (defn on-tool-click [tool']
   (case tool'
