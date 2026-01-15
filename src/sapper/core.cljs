@@ -12,18 +12,15 @@
 (def canvas-h 0)
 (def canvas-scale 1)
 (def dpi (or (.-devicePixelRatio js/window) 1))
+(def sprite-size 100)
 (def safe-area nil)
 (def *screen (atom [:loading]))
 (def screens {})
 (def images {})
 (def puzzles-by-id {})
 (def puzzles-by-type {})
-(def sync-id
-  (or (js/localStorage.getItem "sapper/id")
-      (let [chars "abcdefghijklmnopqrstuvwxyz0123456789"
-            id    (apply str (repeatedly 13 #(get chars (rand-int (count chars)))))]
-        (js/localStorage.setItem "sapper/id" id)
-        id)))
+(def *sync-id (atom nil))
+(def pointer-pos [0 0])
 
 ;; RENDERING
 
@@ -52,11 +49,10 @@
 (defn call-screen-fn [name & args]
   (apply call-screen-fn-impl @*screen name args))
 
-(defn render []
+(defn render [screen]
   (reset! *render-requested false)
-
-  (set! (.-fillStyle ctx) "#0E2E4E")
-  (.fillRect ctx 0 0 canvas-w canvas-h)
+  (.clearRect ctx 0 0 canvas-w canvas-h)
+  (.clearRect notes-ctx 0 0 canvas-w canvas-h)
 
   ;; safe area
   (let [[l t w h] safe-area]
@@ -70,9 +66,9 @@
   (set! (.-fillStyle ctx) "#477397")
   (set! (.-textAlign ctx) "left")
   (.fillText ctx (str canvas-w "×" canvas-h "@" canvas-scale) 13 23)
-  (.fillText ctx sync-id 13 35)
+  (.fillText ctx @*sync-id 13 35)
 
-  (call-screen-fn :on-render))
+  (call-screen-fn-impl (or screen @*screen) :on-render))
 
 (defn maybe-render []
   (when @*render-requested
@@ -104,7 +100,7 @@
 
 (defn-log load-resources [cb]
   (let [resources (into
-                    #{"btn_back.png" "btn_retry.png" "btn_reload.png"}
+                    #{"btn_back.png" "btn_reload.png" "btn_random.png"}
                     (mapcat :resources (vals screens)))
         *pending (atom (count resources))]
     (add-watch *pending ::cb
@@ -135,7 +131,78 @@
                     (println "Error loading" name err)
                     (swap! *pending dec))))))))
 
+(defn reload []
+  #_(reset! core/*screen @core/*screen)
+  (.reload (.-location js/window)))
+
+(defn load-random-puzzle [type]
+  (let [puzzles (mapv :id (get puzzles-by-type type))
+        {:keys [won lost started]} (puzzle-statuses)
+        union   (-> won (.union lost) (.union started))
+        fresh   (into [] (remove #(.has union %) puzzles))]
+    (if-not (empty? fresh)
+      (reset! *screen [:game (rand-nth fresh)])
+      (let [just-started (-> started (.difference won) (.difference lost))]
+        (if-not (empty? just-started)
+          (reset! *screen [:game (rand-nth just-started)])
+          (let [just-lost (-> lost (.difference won) (.difference started))]
+            (if-not (empty? just-lost)
+              (reset! *screen [:game (rand-nth just-lost)])
+              (reset! *screen [:game (rand-nth puzzles)]))))))))
+
+;; BUTTONS
+
+(defn button-render [{:keys [l t w h text icon hover disabled]}]
+  (let [[left top _ _] safe-area]
+  (when disabled
+    (set! (.-globalAlpha ctx) 0.5))
+
+  (set! (.-fillStyle ctx) (if (and hover (not disabled)) "#466689" "#2e4d6f"))
+  (.beginPath ctx)
+  (.roundRect ctx (+ left l) (+ top t) w h 4)
+  (.fill ctx)
+  (cond
+    text
+    (do
+      (set! (.-font ctx) "16px sans-serif")
+      (set! (.-textAlign ctx) "center")
+      (set! (.-textBaseline ctx) "middle")
+      (set! (.-fillStyle ctx) "#fff")
+      (.fillText ctx text (+ left l (quot w 2)) (+ top t (quot h 2))))
+
+    icon
+    (.drawImage ctx (get images icon) (+ left l (quot (- w sprite-size) 2)) (+ top t (quot (- h sprite-size) 2)) sprite-size sprite-size))
+
+  (when disabled
+    (set! (.-globalAlpha ctx) 1))))
+
+(defn button-on-pointer-move [button e]
+  (let [[left top _ _] safe-area
+        {:keys [l t w h text hover]} button
+        over? (inside? (:x e) (:y e) (+ left l) (+ top t) w h)]
+    (cond
+      (and (not hover) over?)
+      (do
+        (assoc! button :hover true)
+        (request-render))
+
+      (and hover (not over?))
+      (do
+        (assoc! button :hover false)
+        (request-render)))))
+
+(defn button-on-pointer-up [button e]
+  (let [[left top _ _] safe-area
+        {:keys [l t w h text hover on-click]} button
+        {:keys [x y start-x start-y]} e]
+    (when (and (both-inside? x y start-x start-y (+ left l) (+ top t) w h) on-click)
+      (on-click e))))
+
 ;; STORAGE
+
+(defn gen-sync-id []
+  (let [chars "abcdefghijklmnopqrstuvwxyz0123456789"]
+    (apply str (repeatedly 13 #(get chars (rand-int (count chars)))))))
 
 (def t0
   (.getTime (Date. "2025-01-01")))
@@ -178,7 +245,7 @@
 
 (defn sync-history [type cb]
   (let [key (history-key type)
-        url (str "https://sapper.tonsky.me/sync/" sync-id "/history-" type ".txt")]
+        url (str "https://sapper.tonsky.me/sync/" @*sync-id "/history-" type ".txt")]
     (-> (js/fetch url)
       (.then (fn [response]
                (if (.-ok response)
@@ -287,6 +354,13 @@
 
 (defn on-load []
   (println "core/on-load")
+
+  (reset! *sync-id
+    (or (js/localStorage.getItem "sapper/id")
+        (let [id (gen-sync-id)]
+          (js/localStorage.setItem "sapper/id" id)
+          id)))
+
   (set! canvas       (.querySelector js/document "#canvas"))
   (set! ctx          (.getContext canvas "2d"))
   (set! notes-canvas (.querySelector js/document "#notes"))
@@ -324,9 +398,7 @@
     (fn [_ _ old new]
       (call-screen-fn-impl old :on-exit)
       (call-screen-fn-impl new :on-enter)
-      (.clearRect ctx 0 0 canvas-w canvas-h)
-      (.clearRect notes-ctx 0 0 canvas-w canvas-h)
-      (call-screen-fn-impl new :on-render)))
+      (render new)))
 
   (add-event-listener js/window "resize"
     (fn [e]
@@ -345,6 +417,7 @@
       (fn [e]
         (.preventDefault e)
         (let [[x y] (rel-coords (aget (.-touches e) 0))]
+          (set! pointer-pos [x y])
           (reset! *start {:start-x x, :start-y y})
           (call-screen-fn :on-pointer-down {:x x :y y :device :touch}))))
 
@@ -352,6 +425,7 @@
       (fn [e]
         (.preventDefault e)
         (let [[x y] (rel-coords (aget (.-touches e) 0))]
+          (set! pointer-pos [x y])
           (call-screen-fn :on-pointer-move (merge @*start {:x x :y y :device :touch})))))
 
     (add-event-listener canvas "touchend"
@@ -367,6 +441,7 @@
                              2 :mouse-right
                              nil)]
           (let [[x y] (rel-coords e)]
+            (set! pointer-pos [x y])
             (reset! *start {:start-x x, :start-y y})
             (call-screen-fn :on-pointer-down {:x x :y y :device device})))))
 
@@ -379,6 +454,7 @@
                              3 :mouse-left
                              nil)]
           (let [[x y] (rel-coords e)]
+            (set! pointer-pos [x y])
             (call-screen-fn :on-pointer-move (merge @*start {:x x :y y :device device}))))))
 
     (add-event-listener canvas "mouseup"
@@ -390,10 +466,12 @@
           (let [[x y] (rel-coords e)]
             (call-screen-fn :on-pointer-up (merge @*start {:x x :y y :device button}))))))
 
-    (load-resources
-      #(let [hash   js/window.location.hash
-             hash   (if (str/blank? hash) nil (subs hash 1))
-             screen (str/split (or hash "level-select/[V]5x5-10") #"/")]
-         (reset! *screen screen)))))
+    (let [navigate (fn [_e]
+                     (let [hash   js/window.location.hash
+                           hash   (if (str/blank? hash) nil (subs hash 1))
+                           screen (str/split (or hash "level-select/[V]5x5-10") #"/")]
+                       (reset! *screen screen)))]
+      (add-event-listener js/window "hashchange" navigate)
+      (load-resources navigate))))
 
 (add-event-listener js/window "load" on-load)

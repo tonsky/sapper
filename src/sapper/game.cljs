@@ -1,7 +1,7 @@
 (ns sapper.game
   (:require
    [clojure.string :as str]
-   [sapper.core :as core :refer [canvas ctx notes-ctx canvas-w canvas-h canvas-scale dpi images safe-area]]
+   [sapper.core :as core :refer [canvas ctx notes-ctx canvas-w canvas-h canvas-scale dpi images safe-area sprite-size]]
    [sapper.level-select :as level-select])
   (:require-macros
    [sapper.macros :refer [defn-log cond+]]))
@@ -10,7 +10,6 @@
 
 (def modern true)
 (def cell-size 70)
-(def sprite-size 100)
 (def margin (-> sprite-size (- cell-size) (/ 2)))
 (def field {})
 (def flags 0)
@@ -23,6 +22,8 @@
 (def outline-x nil)
 (def outline-y nil)
 (def phase)
+
+(def buttons)
 
 (def dragging-flag false)
 (def drag-x)
@@ -133,10 +134,16 @@
   (let [[_ id]   @core/*screen
         _        (set! js/window.location.hash (str "game/" id))
         _        (set! puzzle (get core/puzzles-by-id id))
+        [left top width] core/safe-area
         code     (:code puzzle)
         [_ fw fh] (re-find #"(\d+)x(\d+)" id)
         len      (count code)
         *to-open (atom [])]
+
+    (set! buttons
+      [{:l 25 :t 25 :w 50 :h 50 :icon "btn_back.png"   :on-click #(reset! core/*screen [:level-select (:type puzzle)])}
+       {:l 100 :t 25 :w 50 :h 50 :icon "btn_reload.png" :on-click core/reload}])
+
     (set! phase :init)
     (set! field-w (parse-long fw))
     (set! field-h (parse-long fh))
@@ -188,9 +195,8 @@
       (.fillText ctx id 13 47))
 
     ;; buttons
-    (.drawImage ctx (get images "btn_back.png") (- canvas-w 250) 0 sprite-size sprite-size)
-    (.drawImage ctx (get images "btn_retry.png") (- canvas-w 175) 0 sprite-size sprite-size)
-    (.drawImage ctx (get images "btn_reload.png") (- canvas-w 100) 0 sprite-size sprite-size)
+    (doseq [b buttons]
+      (core/button-render b))
 
     ;; cells
     (doseq [y (range field-w)
@@ -361,26 +367,6 @@
                      (assoc! (get field key) :flagged true)
                      (update-field)))))
 
-(defn reload []
-  #_(reset! core/*screen @core/*screen)
-  (.reload (.-location js/window)))
-
-(defn load-random-puzzle []
-  (let [type    (:type puzzle)
-        puzzles (mapv :id (get core/puzzles-by-type type))
-        {:keys [won lost started]} (core/puzzle-statuses)
-        union   (-> won (.union lost) (.union started))
-        fresh   (into [] (remove #(.has union %) puzzles))]
-    (if-not (empty? fresh)
-      (reset! core/*screen [:game (rand-nth fresh)])
-      (let [just-started (-> started (.difference won) (.difference lost))]
-        (if-not (empty? just-started)
-          (reset! core/*screen [:game (rand-nth just-started)])
-          (let [just-lost (-> lost (.difference won) (.difference started))]
-            (if-not (empty? just-lost)
-              (reset! core/*screen [:game (rand-nth just-lost)])
-              (reset! core/*screen [:game (rand-nth puzzles)]))))))))
-
 (defn on-tool-click [tool']
   (case tool'
     :undo
@@ -436,7 +422,7 @@
       (on-tool-click :clear)
 
       (= "r" key)
-      (reload)
+      (core/reload)
 
       (= "Escape" key)
       (do
@@ -473,7 +459,10 @@
       (set! tool nil)
       (core/request-render))))
 
-(defn on-pointer-move [{:keys [x y device]}]
+(defn on-pointer-move [{:keys [x y device] :as e}]
+  (doseq [b buttons]
+    (core/button-on-pointer-move b e))
+
   (when (and (#{:mouse-left :mouse-right :touch} device) tool (seq notes))
     (let [[sa-x sa-y] safe-area
           last-stroke (aget notes (dec (count notes)))
@@ -497,7 +486,10 @@
     (set! drag-y y)
     (core/request-render)))
 
-(defn on-pointer-up [{:keys [x y start-x start-y device]}]
+(defn on-pointer-up [{:keys [x y start-x start-y device] :as e}]
+  (doseq [b buttons]
+    (core/button-on-pointer-up b e))
+
   (set! drag-x nil)
   (set! drag-y nil)
   (set! drag-device nil)
@@ -521,18 +513,6 @@
       (let [i (quot (- x toolbox-x) tool-size)
             t (nth tools i)]
         (on-tool-click (nth tools i)))
-
-      ;; back button
-      (in? (- canvas-w 225) 25 50 50)
-      (reset! core/*screen [:level-select (:type puzzle)])
-
-      ;; retry button
-      (in? (- canvas-w 150) 25 50 50)
-      (reload)
-
-      ;; random button
-      (in? (- canvas-w 75) 25 50 50)
-      (load-random-puzzle)
 
       tool
       (when (seq notes)
@@ -565,13 +545,13 @@
             (= (count nbs) label-num)
             (do
               (doseq [[i [nx ny]] (core/indexed nbs)]
-                (core/set-timeout (* i 50) #(flag-cell nx ny)))
+                (core/set-timeout (* i 100) #(flag-cell nx ny)))
               true)
 
             (= 0 label-num)
             (do
               (doseq [[i [nx ny]] (core/indexed nbs)]
-                (core/set-timeout (* i 50) #(open-cell nx ny)))
+                (core/set-timeout (* i 100) #(open-cell nx ny)))
               true))))
       :noop
 

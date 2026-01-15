@@ -1,4 +1,5 @@
-- [ ] Screen for copy/paste sync id
+- [ ] New id button
+- [ ] Reset progress button
 - [ ] Unflag by dragging from cell
 - [ ] Pencils/drawing
   - [x] Basic drawing
@@ -14,6 +15,9 @@
 - [ ] Game over screen
 - [ ] Expert mode
 - [ ] Setting screen
+- [x] Screen for copy/paste sync id
+- [x] Buttons + resize
+- [x] Reload button everywhere
 - [x] Render on visibilitychange
 - [x] Sync progression
 - [x] 'd' key for drawing

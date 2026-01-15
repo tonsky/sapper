@@ -7,28 +7,33 @@
 
 (def statuses)
 (def hover-idx nil)
-
-(def tab)
-
-(defn set-tab [t]
-  (set! tab t)
-  (set! js/window.location.hash (str "level-select/" tab))
-  (set! statuses (core/puzzle-statuses t))
-  (core/sync-history t
-    (fn [_]
-      (set! statuses (core/puzzle-statuses t))
-      (core/render)))
-  (core/request-render))
+(def type)
+(def buttons)
 
 (defn on-enter []
-  (set-tab (second @core/*screen)))
+  (let [[left top width] core/safe-area
+        [_ t] @core/*screen]
+    (set! type t)
+    (set! js/window.location.hash (str "level-select/" t))
+    (set! statuses (core/puzzle-statuses t))
+    (set! buttons
+      [{:l 25 :t 25 :w 50 :h 50 :icon "btn_back.png"   :on-click #(reset! core/*screen [:menu])}
+       {:l 100 :t 25 :w 50 :h 50 :icon "btn_reload.png" :on-click core/reload}
+       {:l (- width 75) :t 25 :w 50 :h 50 :icon "btn_random.png" :on-click #(core/load-random-puzzle type)}])
+    (core/sync-history t
+      (fn [_]
+        (set! statuses (core/puzzle-statuses t))
+        (core/render)))))
 
 (defn on-render []
+  (doseq [b buttons]
+    (core/button-render b))
+
   (let [[left top _ _] core/safe-area
-        puzzles (get core/puzzles-by-type tab)
+        puzzles (get core/puzzles-by-type type)
         {:keys [won lost started]} statuses
         img     (get core/images "level_select.png")
-        *seed   (atom (js/Number. (subs tab 3 4)))]
+        *seed   (atom (js/Number. (subs type 3 4)))]
     (doseq [[i puzzle] (core/indexed puzzles)
             :let [_            (swap! *seed #(-> % (* 1103515245) (+ 12345) (mod 2147483648)))
                   x            (mod i 18)
@@ -49,31 +54,21 @@
         (.drawImage ctx img
           sprite-left sprite-top 100 100
           (+ left 20 (* x 30) -10)
-          (+  top 40 (* y 30) -10) 50 50)))
-
-    (doseq [[x key] (->> core/puzzles-by-type keys sort core/indexed)]
-      (set! (.-fillStyle ctx) (if (= tab key) "#fff" "#2e4d6f"))
-      (.beginPath ctx)
-      (.roundRect ctx (+ left 60 (* x 120)) (+ top 760) 100 50 4)
-      (.fill ctx)
-
-      (set! (.-font ctx) "16px sans-serif")
-      (set! (.-textAlign ctx) "center")
-      (set! (.-textBaseline ctx) "middle")
-      (set! (.-fillStyle ctx) (if (= tab key) "#2e4d6f" "#fff"))
-      (.fillText ctx key (+ left 60 50 (* x 120)) (+ top 760 25)))))
+          (+  top 100 (* y 30) -10) 50 50)))))
 
 (defn mouse->idx [x y]
   (let [[left top _ _] core/safe-area]
-    (when (core/inside? x y (+ left 20) (+ top 40) (* 30 18) (* 30 23))
+    (when (core/inside? x y (+ left 20)(+ top 100) (* 30 18) (* 30 23))
       (let [gx      (quot (- x left 20) 30)
-            gy      (quot (- y top 40) 30)
+            gy      (quot (- y top 100) 30)
             i       (+ (* gy 18) gx)
-            puzzles (get core/puzzles-by-type tab)]
+            puzzles (get core/puzzles-by-type type)]
         (when (< i (count puzzles))
           i)))))
 
 (defn on-pointer-move [e]
+  (doseq [b buttons]
+    (core/button-on-pointer-move b e))
   (let [{:keys [x y]} e
         hover-idx' (mouse->idx x y)]
     (when (not= hover-idx hover-idx')
@@ -81,26 +76,14 @@
       (core/request-render))))
 
 (defn on-pointer-up [e]
+  (doseq [b buttons]
+    (core/button-on-pointer-up b e))
   (let [{:keys [x y start-x start-y]} e
-        [left top _ _] core/safe-area
-        in? (fn [l t w h] (core/both-inside? start-x start-y x y (+ left l) (+ top t) w h))]
-    (cond
-      (in? 20 40 (* 30 18) (* 30 23))
+        [left top _ _] core/safe-area]
+    (when (core/both-inside? start-x start-y x y (+ left 20) (+ top 100) (* 30 18) (* 30 23))
       (when-some [idx (mouse->idx x y)]
-        (let [id (-> core/puzzles-by-type (get tab) (nth idx) :id)]
-          (reset! core/*screen [:game id])))
-
-      (in? 60 760 100 50 10)
-      (set-tab "[V]5x5-10")
-
-      (in? (+ 60 (* 1 120)) 760 100 50 10)
-      (set-tab "[V]6x6-14")
-
-      (in? (+ 60 (* 2 120)) 760 100 50 10)
-      (set-tab "[V]7x7-20")
-
-      (in? (+ 60 (* 3 120)) 760 100 50 10)
-      (set-tab "[V]8x8-26"))))
+        (let [id (-> core/puzzles-by-type (get type) (nth idx) :id)]
+          (reset! core/*screen [:game id]))))))
 
 (assoc! core/screens :level-select
   {:on-enter        on-enter
