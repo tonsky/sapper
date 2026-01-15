@@ -83,8 +83,8 @@
     [(quot (- x grid-x) cell-size)
      (quot (- y grid-y) cell-size)]))
 
-(defn flag-area []
-  (let [flags' (cond-> flags dragging-flag dec)]
+(defn flag-area [flags']
+  (let [flags' (or flags' (cond-> flags dragging-flag dec))]
     (when (pos? flags')
       (let [max-flags 26
             flag-gap  (+ 20 (-> max-flags (- flags') (/ max-flags) (* 5) (max 0)))
@@ -260,17 +260,23 @@
         (.stroke ctx)))
 
     ;; Flags
-    (when-some [[l t w h flags' flag-gap] (flag-area)]
-      (let [flag-img (get images "flag.png")]
-        (set! (.-fillStyle ctx) "#082848")
-        (.beginPath ctx)
-        (.roundRect ctx l t w h 6)
-        (.fill ctx)
-        (dotimes [i flags']
-          (.drawImage ctx flag-img
-            (-> l (+ (* i flag-gap)) (- margin))
-            (- t margin)
-            sprite-size sprite-size))))
+    (let [[fl ft fw fh _ fg] (flag-area flags)
+          over?              (and dragging-flag drag-x drag-y (core/inside? drag-x drag-y fl ft fw fh))
+          area               (if over? [fl ft fw fh flags fg] (flag-area))]
+      (when-some [[l t w h visible-flags flag-gap] area]
+        (let [flag-img  (get images "flag.png")
+              hover-idx (when over?
+                          (-> drag-x (- l) (- 20) (quot flag-gap) (core/clamp 0 (dec visible-flags))))]
+          (set! (.-fillStyle ctx) "#082848")
+          (.beginPath ctx)
+          (.roundRect ctx l t w h 6)
+          (.fill ctx)
+          (dotimes [idx visible-flags]
+            (when (not= hover-idx idx)
+              (.drawImage ctx flag-img
+                (-> l (+ (* idx flag-gap)) (- margin))
+                (- t margin)
+                sprite-size sprite-size))))))
 
     ;; Dragged flag
     (when dragging-flag
@@ -509,6 +515,21 @@
       (conj! notes {:tool tool' :points []})
       (core/request-render))
 
+    :let [[gx gy] (field-coords x y)]
+
+    ;; drag flag from cell
+    (and
+      (#{:new :play} phase)
+      (#{:mouse-left :touch} device)
+      gx gy
+      (:flagged (get-cell gx gy)))
+    (do
+      (set! dragging-flag true)
+      (set! tool nil)
+      (assoc! (get field (key gx gy)) :flagged false)
+      (update-field))
+
+    ;; drag flag from flag area
     :let [[l t w h] (flag-area)]
 
     (and

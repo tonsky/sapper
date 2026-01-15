@@ -1,7 +1,6 @@
 - [ ] Migrate game.cljs drag-x/y to core/pointer-pos
 - [ ] Translate canvas so that safe are becomes 0, 0
 - [ ] Game over screen
-- [ ] Unflag by dragging from cell
 - [ ] Pencils/drawing
   - [x] Basic drawing
   - [x] Erase with right mouse
@@ -16,6 +15,7 @@
 - [ ] Setting screen
 - [ ] New id button
 - [ ] Reset progress button
+- [x] Drag flag from cell
 - [x] Auto-open when zero
 - [x] Game start animation
 - [x] Make undo work with selected tool
