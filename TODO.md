@@ -1,5 +1,9 @@
-- [ ] New id button
-- [ ] Reset progress button
+- [ ] Migrate game.cljs drag-x/y to core/pointer-pos
+- [ ] Translate canvas so that safe are becomes 0, 0
+- [ ] Filter tool selection on iPad
+- [ ] Auto-open when zero
+
+- [ ] Game over screen
 - [ ] Unflag by dragging from cell
 - [ ] Pencils/drawing
   - [x] Basic drawing
@@ -11,10 +15,11 @@
   - [x] Undo
 - [ ] Open animation
 - [ ] Try highlighting cells instead of outline
-- [ ] Auto-open when zero
-- [ ] Game over screen
 - [ ] Expert mode
 - [ ] Setting screen
+- [ ] New id button
+- [ ] Reset progress button
+- [x] Clear should unselect tool
 - [x] Screen for copy/paste sync id
 - [x] Buttons + resize
 - [x] Reload button everywhere

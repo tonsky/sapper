@@ -375,6 +375,10 @@
     :clear
     (do
       (set! notes [])
+      (set! tool nil)
+      (set! drag-x nil)
+      (set! drag-y nil)
+      (set! drag-device nil)
       (core/request-render))
 
     (:eraser :color1 :color2 :color3 :color4)

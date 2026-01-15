@@ -179,7 +179,8 @@
 (defn button-on-pointer-move [button e]
   (let [[left top _ _] safe-area
         {:keys [l t w h text hover]} button
-        over? (inside? (:x e) (:y e) (+ left l) (+ top t) w h)]
+        {:keys [x y]} e
+        over? (inside? x y (+ left l) (+ top t) w h)]
     (cond
       (and (not hover) over?)
       (do
