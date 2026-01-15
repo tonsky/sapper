@@ -332,3 +332,4 @@
 [V]5x5-10-9966  fOOfOffqfoOOffofqoffOooqq   V;2x4,1x7,-1x1
 [V]5x5-10-9980  qqfffofqffoooOfqOfffoqOqO   V;4x1,3x1,2x1,1x7,-1x1
 [V]5x5-10-9987  OffqqoofffqoooqfoOfOffOfo   V;4x1,2x2,1x8,-1x1
+[V]5x5-10-XXXX  ooooQoqoOfooOffoOfffQffff

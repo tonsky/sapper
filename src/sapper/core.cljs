@@ -79,6 +79,9 @@
 (defn indexed [seq]
   (map vector (range) seq))
 
+(defn clamp [x min max]
+  (js/Math.max (js/Math.min x max) min))
+
 (defn dist [[x1 y1] [x2 y2]]
   (js/Math.hypot (- x1 x2) (- y1 y2)))
 

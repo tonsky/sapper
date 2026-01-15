@@ -39,6 +39,7 @@
    :color4 "#25D0FF"})
 (def tool-size 60)
 (def notes [])
+(def anim-start 0)
 
 (declare open-cell flag-cell)
 
@@ -131,14 +132,13 @@
   (core/request-render))
 
 (defn-log on-enter []
-  (let [[_ id]   @core/*screen
-        _        (set! js/window.location.hash (str "game/" id))
-        _        (set! puzzle (get core/puzzles-by-id id))
+  (let [[_ id]           @core/*screen
+        _                (set! js/window.location.hash (str "game/" id))
+        _                (set! puzzle (get core/puzzles-by-id id))
         [left top width] core/safe-area
-        code     (:code puzzle)
-        [_ fw fh] (re-find #"(\d+)x(\d+)" id)
-        len      (count code)
-        *to-open (atom [])]
+        code             (:code puzzle)
+        [_ fw fh]        (re-find #"(\d+)x(\d+)" id)
+        len              (count code)]
 
     (set! buttons
       [{:l 25 :t 25 :w 50 :h 50 :icon "btn_back.png"   :on-click #(reset! core/*screen [:level-select (:type puzzle)])}
@@ -160,18 +160,11 @@
         (assoc! field (key x y)
           (case ch
             "f" {:mine true,  :open false}
-            "F" {:mine true,  :open false}
+            "F" {:mine true,  :open true}
             "o" {:mine false, :open false}
-            "O" {:mine false, :open false}
+            "O" {:mine false, :open true}
             "q" {:mine false, :open false, :label "q"}
-            "Q" {:mine false, :open true,  :label "q"}))
-        (case ch
-          "F"       (swap! *to-open conj #(flag-cell x y :init))
-          ("O" "Q") (swap! *to-open conj #(open-cell x y :init))
-          nil)))
-
-    (doseq [[i f] (core/indexed (shuffle @*to-open))]
-      (core/set-timeout (* i 50) f))
+            "Q" {:mine false, :open true,  :label "q"}))))
 
     (update-field)
     (set! outline-x nil)
@@ -182,17 +175,21 @@
     (set! drag-y nil)
     (set! drag-device nil)
     (set! tool nil)
-    (set! notes [])))
+    (set! notes [])
+    (set! anim-start (js/Date.now))
+    (js/requestAnimationFrame #(core/render))))
 
 (defn on-render []
-  (let [[hover-x hover-y] (when (and drag-x drag-y)
-                            (field-coords drag-x drag-y))]
+  (let [anim-length       300
+        anim-progress     (core/clamp (/ (- (js/Date.now) anim-start) anim-length) 0 1)
+        [hover-x hover-y] (when (and drag-x drag-y)
+                            (field-coords drag-x drag-y))
+        id                (:id puzzle)]
     ;; level name
-    (let [id (:id puzzle)]
-      (set! (.-font ctx) "10px sans-serif")
-      (set! (.-textAlign ctx) "left")
-      (set! (.-fillStyle ctx) "#477397")
-      (.fillText ctx id 13 47))
+    (set! (.-font ctx) "10px sans-serif")
+    (set! (.-textAlign ctx) "left")
+    (set! (.-fillStyle ctx) "#477397")
+    (.fillText ctx id 13 47)
 
     ;; buttons
     (doseq [b buttons]
@@ -202,20 +199,27 @@
     (doseq [y (range field-w)
             x (range field-h)]
       (let [{:keys [mine flagged open label solved]} (get-cell x y)
-            err  (and label (or (str/starts-with? label "-")
-                              (str/starts-with? label "error_")))
-            name (cond
-                   (and (not tool) (not open) (not flagged) (= x hover-x) (= y hover-y)) "hover.png"
-                   flagged                          "flagged.png"
-                   (not open)                       "closed.png"
-                   err                              (str label ".png")
-                   (and open solved)                (str label "_solved.png")
-                   (= "q" label)                    "q_solved.png"
-                   :else                            (str label ".png"))
-            img  (get images name)
-            px   (-> (* x cell-size) (+ grid-x) (- margin))
-            py   (-> (* y cell-size) (+ grid-y) (- margin))]
+            err            (and label (or (str/starts-with? label "-")
+                                        (str/starts-with? label "error_")))
+            name           (cond
+                             (and (not tool) (not open) (not flagged) (= x hover-x) (= y hover-y)) "hover.png"
+                             flagged                          "flagged.png"
+                             (not open)                       "closed.png"
+                             err                              (str label ".png")
+                             (and open solved)                (str label "_solved.png")
+                             (= "q" label)                    "q_solved.png"
+                             :else                            (str label ".png"))
+            img            (get images name)
+            anim-stagger   (-> (+ (* y field-w) x) (/ field-w field-h))
+            anim-progress' (-> anim-progress (- (* anim-stagger 0.75)) (* 4) (core/clamp 0 1))
+            anim-travel    (/ (core/dist [0 0] [x y]) (core/dist [0 0] [field-w field-h]))
+            anim-offset-x  (* (- 1 anim-progress') (* anim-travel 30))
+            anim-offset-y  (* (- 1 anim-progress') (* anim-travel 50))
+            px             (-> (* x cell-size) (+ grid-x) (- margin) (+ anim-offset-x))
+            py             (-> (* y cell-size) (+ grid-y) (- margin) (+ anim-offset-y))]
+        (set! (.-globalAlpha ctx) anim-progress')
         (.drawImage ctx img px py sprite-size sprite-size)))
+    (set! (.-globalAlpha ctx) 1)
 
     ;; outline
     (when (and outline-x outline-y)
@@ -330,10 +334,14 @@
       (set! (.-textBaseline ctx) "middle")
       (set! (.-fillStyle ctx) "#FFF")
       (.fillText ctx (case phase :game-over "Game Over :(" :victory "Victory!")
-        (+ grid-x (quot grid-w 2)) (+ grid-y (quot grid-h 2))))))
+        (+ grid-x (quot grid-w 2)) (+ grid-y (quot grid-h 2))))
 
-(defn open-cell [gx gy phase-override]
-  (when (= :new (or phase-override phase))
+    ;; Animation
+    (when (< anim-progress 1)
+      (js/requestAnimationFrame #(core/render)))))
+
+(defn open-cell [gx gy]
+  (when (= :new phase)
     (set! phase :play)
     (core/append-history (:id puzzle) :start))
   (let [key                         (key gx gy)
@@ -351,8 +359,8 @@
                 (assoc! (get field key) :open true)
                 (update-field)))))
 
-(defn flag-cell [gx gy phase-override]
-  (when (= :new (or phase-override phase))
+(defn flag-cell [gx gy]
+  (when (= :new phase)
     (set! phase :play)
     (core/append-history (:id puzzle) :start))
   (let [key                    (key gx gy)
