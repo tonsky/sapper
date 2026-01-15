@@ -1,6 +1,5 @@
 - [ ] Migrate game.cljs drag-x/y to core/pointer-pos
 - [ ] Translate canvas so that safe are becomes 0, 0
-- [ ] Filter tool selection on iPad
 - [ ] Auto-open when zero
 
 - [ ] Game over screen
@@ -19,6 +18,7 @@
 - [ ] Setting screen
 - [ ] New id button
 - [ ] Reset progress button
+- [x] Make undo work with selected tool
 - [x] Clear should unselect tool
 - [x] Screen for copy/paste sync id
 - [x] Buttons + resize

@@ -476,10 +476,7 @@
           num-points  (count points)]
       (if (and
             (>= num-points 2)
-            (let [[x1 y1] (aget points (- num-points 1))
-                  [x2 y2] (aget points (- num-points 2))
-                  dist    (js/Math.hypot (- x1 x2) (- y1 y2))]
-              (< dist 5)))
+            (< (core/dist (last points) (core/penultimate points)) 5))
         (aset points (dec num-points) [rel-x rel-y])
         (conj! points [rel-x rel-y]))))
   (when (or
@@ -497,6 +494,18 @@
   (set! drag-x nil)
   (set! drag-y nil)
   (set! drag-device nil)
+
+  (when (and tool (seq notes))
+    (let [points (:points (last notes))]
+      (when
+        (or
+          (= 0 (count points))
+          (= 1 (count points))
+          (and
+            (= 2 (count points))
+            (< (core/dist (nth points 0) (nth points 1)) 5)))
+        (.pop notes))))
+
   (let [[gx gy]   (field-coords x y)
         toolbox-w (* (count tools) tool-size)
         toolbox-x (quot (- canvas-w toolbox-w) 2)
@@ -519,11 +528,7 @@
         (on-tool-click (nth tools i)))
 
       tool
-      (when (seq notes)
-        (let [last-stroke (aget notes (dec (.-length notes)))
-              points      (:points last-stroke)]
-          (when (<= (count points) 1)
-            (.pop notes))))
+      :noop
 
       ;; end game
       (#{:game-over :victory} phase)

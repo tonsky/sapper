@@ -79,6 +79,12 @@
 (defn indexed [seq]
   (map vector (range) seq))
 
+(defn dist [[x1 y1] [x2 y2]]
+  (js/Math.hypot (- x1 x2) (- y1 y2)))
+
+(defn penultimate [xs]
+  (nth xs (- (count xs) 2)))
+
 (defn inside? [x y l t w h margin]
   (let [margin (or margin 0)]
     (and
