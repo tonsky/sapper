@@ -207,6 +207,8 @@
             err            (and label (or (str/starts-with? label "-")
                                         (str/starts-with? label "error_")))
             name           (cond
+                             (and (= :game-over phase) mine (not flagged)) "mine.png"
+                             (and (= :game-over phase) (not mine) flagged) "flagged_wrong.png"
                              (and (not tool) (not open) (not flagged) (= x hover-x) (= y hover-y)) "hover.png"
                              flagged                          "flagged.png"
                              (not open)                       "closed.png"
@@ -656,6 +658,6 @@
                       "0_solved.png" "1_solved.png" "2_solved.png" "3_solved.png" "4_solved.png" "5_solved.png" "6_solved.png" "7_solved.png" "8_solved.png"
                       "-1.png" "-2.png" "-3.png" "-4.png" "-5.png" "-6.png" "-7.png" "-8.png"
                       "error_0.png" "error_1.png" "error_2.png" "error_3.png" "error_4.png" "error_5.png" "error_6.png" "error_7.png"
-                      "q.png" "q_solved.png" "closed.png" "hover.png" "flagged.png" "flag.png"
+                      "q.png" "q_solved.png" "closed.png" "hover.png" "flagged.png" "flag.png" "mine.png" "flagged_wrong.png"
                       "tool_undo.png" "tool_eraser.png" "tool_color1.png" "tool_color2.png" "tool_color3.png" "tool_color4.png" "tool_clear.png"
                       "tool_eraser_selected.png" "tool_color1_selected.png" "tool_color2_selected.png" "tool_color3_selected.png" "tool_color4_selected.png"}})
