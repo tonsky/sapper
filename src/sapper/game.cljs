@@ -2,7 +2,8 @@
   (:require
    [clojure.string :as str]
    [sapper.core :as core :refer [canvas ctx notes-ctx canvas-w canvas-h canvas-scale dpi images safe-area sprite-size]]
-   [sapper.level-select :as level-select])
+   [sapper.level-select :as level-select]
+   [sapper.solver :as solver])
   (:require-macros
    [sapper.macros :refer [defn-log cond+]]))
 
@@ -67,6 +68,11 @@
       [[(inc x)      y ]])
     (when (and (< x (dec field-w)) (< y (dec field-h)))
       [[(inc x) (inc y)]])))
+
+(defn mine-count [x y]
+  (->> (neighbours x y)
+    (filter (fn [[x y]] (:mine (get-cell x y))))
+    (count)))
 
 (defn key [x y]
   (str x "," y))
@@ -203,7 +209,7 @@
     ;; cells
     (doseq [y (range field-w)
             x (range field-h)]
-      (let [{:keys [mine flagged open label solved]} (get-cell x y)
+      (let [{:keys [mine flagged open label solved] :as cell} (get-cell x y)
             err            (and label (or (str/starts-with? label "-")
                                         (str/starts-with? label "error_")))
             name           (cond
@@ -340,7 +346,7 @@
 
     ;; End game screen
     (when (#{:game-over :victory} phase)
-      (set! (.-fillStyle ctx) "#072947F4")
+      (set! (.-fillStyle ctx) "#07294798")
       (.fillRect ctx 0 (+ grid-y (quot (- grid-h 90) 2)) canvas-w 90)
       (set! (.-font ctx) "40px sans-serif")
       (set! (.-textAlign ctx) "center")
@@ -353,26 +359,68 @@
     (when (< anim-progress 1)
       (js/requestAnimationFrame #(core/render)))))
 
+(defn field-comparator [[key value]]
+  (let [[x y] (parse-key key)]
+    (str y "," x)))
+
 (defn open-cell [gx gy]
   (when (= :new phase)
     (set! phase :play)
     (core/append-history (:id puzzle) :start))
   (let [key                         (key gx gy)
         {:keys [mine open flagged]} (get-cell gx gy)]
-    (cond
+    (cond+
       open    :noop
       flagged (do
                 (assoc! (get field key) :flagged false)
                 (update-field))
-      mine    (do
-                (core/append-history (:id puzzle) :lose)
-                (set! phase :game-over)
-                (core/request-render))
+      #_mine    #_(do
+                    (core/append-history (:id puzzle) :lose)
+                    (set! phase :game-over)
+                    (core/request-render))
       :else   (do
                 #_(println (- (js/Date.now) t0) "open" gx gy)
-                (assoc! (get field key) :open true)
-                (update-field)
-                (maybe-auto-open gx gy)))))
+
+                (let [problem-with-flags {}
+                      _ (doseq [[key' {:keys [open flagged label]}] field]
+                          (assoc! problem-with-flags key'
+                            {:open    open
+                             :flagged (if (= key key')
+                                        true
+                                        flagged)
+                             :label   (cond
+                                        (not open)    nil
+                                        (= "q" label) "q"
+                                        flagged       nil
+                                        :else         (str (apply mine-count (parse-key key'))))}))
+                      problem-without-flags {}
+                      _ (doseq [[key' {:keys [open flagged label]}] field]
+                          (assoc! problem-without-flags key'
+                            {:open    open
+                             :flagged (= key key')
+                             :label   (cond
+                                        (not open)    nil
+                                        (= "q" label) "q"
+                                        flagged       nil
+                                        :else         (str (apply mine-count (parse-key key'))))}))
+                      cnt (count (filter :mine (vals field)))]
+
+                  (if-some [counterexample (or
+                                             (solver/solve field-w field-h cnt problem-with-flags)
+                                             (solver/solve field-w field-h cnt problem-without-flags))]
+                    (do
+                      #_(println "yes" counterexample)
+                      (doseq [[key cell] field]
+                        (assoc! cell :mine (get-in counterexample [key :mine] false)))
+                      #_(update-field)
+                      (core/append-history (:id puzzle) :lose)
+                      (set! phase :game-over)
+                      (core/request-render))
+                    (do
+                      #_(println "no" field)
+                      (assoc! (get field key) :open true)
+                      (update-field)
+                      (maybe-auto-open gx gy))))))))
 
 (defn flag-cell [gx gy]
   (when (= :new phase)

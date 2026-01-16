@@ -13,10 +13,10 @@
   - [x] Undo
 - [ ] Open animation
 - [ ] Try highlighting cells instead of outline
-- [ ] Expert mode
 - [ ] Setting screen
 - [ ] New id button
 - [ ] Reset progress button
+- [x] Expert mode
 - [x] Game over screen
 - [x] Drag flag from cell
 - [x] Auto-open when zero
