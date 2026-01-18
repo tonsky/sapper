@@ -1,4 +1,4 @@
-- [ ] Flags/cells count as a number
+- [ ] Open cells count as a number
 - [ ] Controls on the left on iPad?
 - [ ] Migrate game.cljs drag-x/y to core/pointer-pos
 - [ ] Translate canvas so that safe are becomes 0, 0
@@ -17,7 +17,8 @@
 - [ ] Setting screen
 - [ ] New id button
 - [ ] Reset progress button
-- [ ] Show place of explosion
+- [x] Show place of explosion
+- [x] Flags count as a number
 - [x] Return random button to game screen
 - [x] Expert mode
 - [x] Game over screen

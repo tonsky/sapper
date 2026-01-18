@@ -62,7 +62,7 @@
     (.fill ctx))
 
   ;; viewport size
-  (set! (.-font ctx) (str "10px " font-family))
+  (set! (.-font ctx) "10px font")
   (set! (.-fillStyle ctx) "#477397")
   (set! (.-textAlign ctx) "left")
   (.fillText ctx (str canvas-w "×" canvas-h "@" canvas-scale) 13 23)
@@ -137,9 +137,6 @@
 
 ;; Resources
 
-(def font-family
-  "'CoFo Sans Semi-Mono'")
-
 (defn-log load-resources [cb]
   (let [resources (into
                     #{"btn_back.png" "btn_reload.png" "btn_random.png"
@@ -178,8 +175,7 @@
         (let [weight (condp re-find name
                        #"Regular" "400"
                        #"Bold"    "700")
-              family (re-find #"(?<=^').*(?='$)" font-family)
-              font (js/FontFace. family (str "url(fonts/" name ")") {:weight (str weight)})]
+              font (js/FontFace. "font" (str "url(fonts/" name ")") {:weight (str weight)})]
           (-> (.load font)
             (.then (fn [loaded-font]
                      (.add js/document.fonts loaded-font)
@@ -202,7 +198,7 @@
   (cond
     text
     (do
-      (set! (.-font ctx) (str "16px " font-family))
+      (set! (.-font ctx) "16px font")
       (set! (.-textAlign ctx) "center")
       (set! (.-textBaseline ctx) "middle")
       (set! (.-fillStyle ctx) "#fff")

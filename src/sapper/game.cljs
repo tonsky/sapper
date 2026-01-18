@@ -94,15 +94,23 @@
 (defn flag-area [flags']
   (let [flags' (or flags' (cond-> flags dragging-flag dec))]
     (when (pos? flags')
-      (let [max-flags 26
-            flag-gap  (+ 15 (-> max-flags (- flags') (/ max-flags) (* 10) (max 0)))
-            total-w   (+ (* (dec flags') flag-gap) cell-size -5)]
-        [(-> canvas-w (- total-w) (quot 2))
-         (+ grid-y grid-h 30)
-         total-w
+      (let [max-flags  26
+            flag-gap   (+ 15 (-> max-flags (- flags') (/ max-flags) (* 10) (max 0)))
+            total-w    (+ (* (dec flags') flag-gap) cell-size -5)
+            number-w   (cond
+                         (>= flags' 10) 50
+                         (>= flags' 1)  25
+                         :else          0)
+            combined-w (+ total-w 15 number-w)
+            left       (-> canvas-w (- combined-w) (quot 2))
+            top        (+ grid-y grid-h 30)]
+        [left
+         top
+         combined-w
          cell-size
          flags'
-         flag-gap]))))
+         flag-gap
+         (+ left total-w)]))))
 
 (defn processed [cell]
   (or
@@ -203,7 +211,7 @@
         id                (:id puzzle)
         rng               (core/make-rng (js/parseInt (str/join (re-seq #"\d" id))))]
     ;; level name
-    (set! (.-font ctx) (str "10px " core/font-family))
+    (set! (.-font ctx) "10px font")
     (set! (.-textAlign ctx) "left")
     (set! (.-fillStyle ctx) "#477397")
     (.fillText ctx id 13 47)
@@ -283,10 +291,10 @@
         (.stroke ctx)))
 
     ;; Flags
-    (let [[fl ft fw fh _ fg] (flag-area flags)
-          over?              (and dragging-flag drag-x drag-y (core/inside? drag-x drag-y fl ft fw fh))
-          area               (if over? [fl ft fw fh flags fg] (flag-area))]
-      (when-some [[l t w h visible-flags flag-gap] area]
+    (let [[fl ft fw fh _ fg fnl] (flag-area flags)
+          over?                  (and dragging-flag drag-x drag-y (core/inside? drag-x drag-y fl ft fw fh))
+          area                   (if over? [fl ft fw fh flags fg fnl] (flag-area))]
+      (when-some [[l t w h visible-flags flag-gap number-left] area]
         (let [flag-img  (get images "flag.png")
               hover-idx (when over?
                           (-> drag-x (- l) (- 20) (quot flag-gap) (core/clamp 0 (dec visible-flags))))]
@@ -299,7 +307,13 @@
               (.drawImage ctx flag-img
                 (-> l (+ (* idx flag-gap)) (- margin))
                 (- t margin)
-                sprite-size sprite-size))))))
+                sprite-size sprite-size)))
+          ;; Flag count
+          (set! (.-font ctx) "bold 42px font")
+          (set! (.-textAlign ctx) "left")
+          (set! (.-textBaseline ctx) "middle")
+          (set! (.-fillStyle ctx) "#FA8787")
+          (.fillText ctx (str visible-flags) number-left (+ t (quot h 2))))))
 
     ;; Dragged flag
     (when dragging-flag
@@ -363,7 +377,7 @@
     (when (#{:game-over :victory} phase)
       (set! (.-fillStyle ctx) "#07294798")
       (.fillRect ctx 0 (+ grid-y (quot (- grid-h 90) 2)) canvas-w 90)
-      (set! (.-font ctx) (str "bold 40px " core/font-family))
+      (set! (.-font ctx) "bold 40px font")
       (set! (.-textAlign ctx) "center")
       (set! (.-textBaseline ctx) "middle")
       (set! (.-fillStyle ctx) "#FFF")
