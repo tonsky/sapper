@@ -228,7 +228,6 @@
                              (not open)                       "closed.png"
                              err                              (str label ".png")
                              (and open solved)                (str label "_solved.png")
-                             (= "q" label)                    "q_solved.png"
                              :else                            (str label ".png"))
             img            (get images name)
             anim-stagger   (-> (+ (* y field-w) x) (/ field-w field-h))
