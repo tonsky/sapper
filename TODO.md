@@ -3,7 +3,6 @@
 - [ ] Migrate game.cljs drag-x/y to core/pointer-pos
 - [ ] Translate canvas so that safe are becomes 0, 0
 - [ ] Victory/game over should be over notes
-- [ ] Return random button to game screen
 - [ ] Auto-finish when only empty left/flags == empty
 - [ ] Pencils/drawing
   - [x] Basic drawing
@@ -19,6 +18,7 @@
 - [ ] New id button
 - [ ] Reset progress button
 - [ ] Show place of explosion
+- [x] Return random button to game screen
 - [x] Expert mode
 - [x] Game over screen
 - [x] Drag flag from cell

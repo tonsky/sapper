@@ -156,7 +156,8 @@
 
     (set! buttons
       [{:l 25 :t 25 :w 50 :h 50 :icon "btn_back.png"   :on-click #(reset! core/*screen [:level-select (:type puzzle)])}
-       {:l 100 :t 25 :w 50 :h 50 :icon "btn_reload.png" :on-click core/reload}])
+       {:l 100 :t 25 :w 50 :h 50 :icon "btn_reload.png" :on-click core/reload}
+       {:l (- width 75) :t 25 :w 50 :h 50 :icon "btn_random.png" :on-click #(core/load-random-puzzle (:type puzzle))}])
 
     (set! phase :init)
     (set! field-w (parse-long fw))
