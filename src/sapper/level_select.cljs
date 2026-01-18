@@ -33,9 +33,9 @@
         puzzles (get core/puzzles-by-type type)
         {:keys [won lost started]} statuses
         img     (get core/images "level_select.png")
-        *seed   (atom (js/Number. (subs type 3 4)))]
+        rng     (core/make-rng (js/parseInt (subs type 3 4)))]
     (doseq [[i puzzle] (core/indexed puzzles)
-            :let [_            (swap! *seed #(-> % (* 1103515245) (+ 12345) (mod 2147483648)))
+            :let [_            (core/advance-rng rng)
                   x            (mod i 18)
                   y            (quot i 18)
                   hover?       (= hover-idx i)
@@ -49,7 +49,7 @@
                                  (contains? started id)              200
                                  hover?                              100
                                  :else                               0)
-                  sprite-top   (-> @*seed (/ 2147483648) (* 5) js/Math.floor (* 100))]]
+                  sprite-top   (-> (core/random rng) (* 5) js/Math.floor (* 100))]]
       (when (< (+ (* y 18) x) (count puzzles))
         (.drawImage ctx img
           sprite-left sprite-top 100 100

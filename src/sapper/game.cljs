@@ -95,7 +95,7 @@
   (let [flags' (or flags' (cond-> flags dragging-flag dec))]
     (when (pos? flags')
       (let [max-flags 26
-            flag-gap  (+ 20 (-> max-flags (- flags') (/ max-flags) (* 5) (max 0)))
+            flag-gap  (+ 15 (-> max-flags (- flags') (/ max-flags) (* 10) (max 0)))
             total-w   (+ (* (dec flags') flag-gap) cell-size -5)]
         [(-> canvas-w (- total-w) (quot 2))
          (+ grid-y grid-h 30)
@@ -200,9 +200,10 @@
   (let [anim-progress     (core/clamp (/ (- (js/Date.now) anim-start) anim-length) 0 1)
         [hover-x hover-y] (when (and drag-x drag-y)
                             (field-coords drag-x drag-y))
-        id                (:id puzzle)]
+        id                (:id puzzle)
+        rng               (core/make-rng (js/parseInt (str/join (re-seq #"\d" id))))]
     ;; level name
-    (set! (.-font ctx) "10px sans-serif")
+    (set! (.-font ctx) (str "10px " core/font-family))
     (set! (.-textAlign ctx) "left")
     (set! (.-fillStyle ctx) "#477397")
     (.fillText ctx id 13 47)
@@ -214,12 +215,13 @@
     ;; cells
     (doseq [y (range field-w)
             x (range field-h)]
-      (let [{:keys [mine flagged open label solved] :as cell} (get-cell x y)
+      (let [_              (core/advance-rng rng)
+            {:keys [mine flagged open label solved] :as cell} (get-cell x y)
             err            (and label (or (str/starts-with? label "-")
                                         (str/starts-with? label "error_")))
             name           (cond
                              (and (= :game-over phase) (= x exploded-x) (= y exploded-y)) nil
-                             (and (= :game-over phase) mine (not flagged)) "mine.png"
+                             (and (= :game-over phase) mine (not flagged)) (str "mine_" (-> (core/random rng) (* 5) js/Math.floor) ".png")
                              (and (= :game-over phase) (not mine) flagged) "flagged_wrong.png"
                              (and (not tool) (not open) (not flagged) (= x hover-x) (= y hover-y)) "hover.png"
                              flagged                          "flagged.png"
@@ -362,7 +364,7 @@
     (when (#{:game-over :victory} phase)
       (set! (.-fillStyle ctx) "#07294798")
       (.fillRect ctx 0 (+ grid-y (quot (- grid-h 90) 2)) canvas-w 90)
-      (set! (.-font ctx) "40px sans-serif")
+      (set! (.-font ctx) (str "bold 40px " core/font-family))
       (set! (.-textAlign ctx) "center")
       (set! (.-textBaseline ctx) "middle")
       (set! (.-fillStyle ctx) "#FFF")
@@ -530,7 +532,7 @@
   (let [key (.-key e)
         mod (or (.-altKey e) (.-ctrlKey e) (.-metaKey e) (.-shiftKey e))]
     (cond
-      (and (or (.-ctrlKey e) (.-metaKey e)) (= "z" key))
+      (= "z" key)
       (undo)
 
       (or (.-altKey e) (.-ctrlKey e) (.-metaKey e) (.-shiftKey e))
@@ -722,6 +724,7 @@
                       "0_solved.png" "1_solved.png" "2_solved.png" "3_solved.png" "4_solved.png" "5_solved.png" "6_solved.png" "7_solved.png" "8_solved.png"
                       "-1.png" "-2.png" "-3.png" "-4.png" "-5.png" "-6.png" "-7.png" "-8.png"
                       "error_0.png" "error_1.png" "error_2.png" "error_3.png" "error_4.png" "error_5.png" "error_6.png" "error_7.png"
-                      "q.png" "q_solved.png" "closed.png" "hover.png" "flagged.png" "flag.png" "mine.png" "explosion.png" "flagged_wrong.png"
+                      "q.png" "q_solved.png" "closed.png" "hover.png" "flagged.png" "flag.png" "flagged_wrong.png"
+                      "mine_0.png" "mine_1.png" "mine_2.png" "mine_3.png" "mine_4.png" "explosion.png"
                       "tool_undo.png" "tool_eraser.png" "tool_color1.png" "tool_color2.png" "tool_color3.png" "tool_color4.png" "tool_clear.png"
                       "tool_eraser_selected.png" "tool_color1_selected.png" "tool_color2_selected.png" "tool_color3_selected.png" "tool_color4_selected.png"}})

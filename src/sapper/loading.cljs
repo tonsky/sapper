@@ -3,7 +3,7 @@
    [sapper.core :as core :refer [ctx canvas-w canvas-h]]))
 
 (defn on-render []
-  (set! (.-font ctx) "24px sans-serif")
+  (set! (.-font ctx) (str "bold 24px " core/font-family))
   (set! (.-fillStyle ctx) "#FFF")
   (set! (.-textAlign ctx) "center")
   (set! (.-textBaseline ctx) "middle")

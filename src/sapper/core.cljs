@@ -62,7 +62,7 @@
     (.fill ctx))
 
   ;; viewport size
-  (set! (.-font ctx) "10px sans-serif")
+  (set! (.-font ctx) (str "10px " font-family))
   (set! (.-fillStyle ctx) "#477397")
   (set! (.-textAlign ctx) "left")
   (.fillText ctx (str canvas-w "×" canvas-h "@" canvas-scale) 13 23)
@@ -101,15 +101,49 @@
     (inside? x1 y1 l t w h margin)
     (inside? x2 y2 l t w h margin)))
 
+(defn make-rng [seed]
+  (atom seed))
+
+(defn advance-rng [rng]
+  (swap! rng #(-> % (* 1103515245) (+ 12345) (mod 2147483648))))
+
+(defn random [rng]
+  (/ @rng 2147483648))
+
 (defn parse-puzzle [puzzle]
   (let [[_ id type code] (re-find #"(([^ -]+-[^ -]+)-[^ -]+) +([foqFOQ]+)" puzzle)]
     {:id   id
      :type type
      :code code}))
 
+(defn reload []
+  #_(reset! *screen @*screen)
+  (.reload (.-location js/window)))
+
+(defn load-random-puzzle [type]
+  (let [puzzles (mapv :id (get puzzles-by-type type))
+        {:keys [won lost started]} (puzzle-statuses)
+        union   (-> won (.union lost) (.union started))
+        fresh   (into [] (remove #(.has union %) puzzles))]
+    (if-not (empty? fresh)
+      (reset! *screen [:game (rand-nth fresh)])
+      (let [just-started (-> started (.difference won) (.difference lost))]
+        (if-not (empty? just-started)
+          (reset! *screen [:game (rand-nth just-started)])
+          (let [just-lost (-> lost (.difference won) (.difference started))]
+            (if-not (empty? just-lost)
+              (reset! *screen [:game (rand-nth just-lost)])
+              (reset! *screen [:game (rand-nth puzzles)]))))))))
+
+;; Resources
+
+(def font-family
+  "'CoFo Sans Semi-Mono'")
+
 (defn-log load-resources [cb]
   (let [resources (into
-                    #{"btn_back.png" "btn_reload.png" "btn_random.png"}
+                    #{"btn_back.png" "btn_reload.png" "btn_random.png"
+                      "CoFoSansSemi-Mono-Regular.woff2" "CoFoSansSemi-Mono-Bold.woff2"}
                     (mapcat :resources (vals screens)))
         *pending (atom (count resources))]
     (add-watch *pending ::cb
@@ -138,26 +172,21 @@
                      (swap! *pending dec))))
           (.catch (fn [err]
                     (println "Error loading" name err)
-                    (swap! *pending dec))))))))
+                    (swap! *pending dec))))
 
-(defn reload []
-  #_(reset! core/*screen @core/*screen)
-  (.reload (.-location js/window)))
-
-(defn load-random-puzzle [type]
-  (let [puzzles (mapv :id (get puzzles-by-type type))
-        {:keys [won lost started]} (puzzle-statuses)
-        union   (-> won (.union lost) (.union started))
-        fresh   (into [] (remove #(.has union %) puzzles))]
-    (if-not (empty? fresh)
-      (reset! *screen [:game (rand-nth fresh)])
-      (let [just-started (-> started (.difference won) (.difference lost))]
-        (if-not (empty? just-started)
-          (reset! *screen [:game (rand-nth just-started)])
-          (let [just-lost (-> lost (.difference won) (.difference started))]
-            (if-not (empty? just-lost)
-              (reset! *screen [:game (rand-nth just-lost)])
-              (reset! *screen [:game (rand-nth puzzles)]))))))))
+        #".*\.woff2"
+        (let [weight (condp re-find name
+                       #"Regular" "400"
+                       #"Bold"    "700")
+              family (re-find #"(?<=^').*(?='$)" font-family)
+              font (js/FontFace. family (str "url(fonts/" name ")") {:weight (str weight)})]
+          (-> (.load font)
+            (.then (fn [loaded-font]
+                     (.add js/document.fonts loaded-font)
+                     (swap! *pending dec)))
+            (.catch (fn [err]
+                      (println "Error loading font" file err)
+                      (swap! *pending dec)))))))))
 
 ;; BUTTONS
 
@@ -173,7 +202,7 @@
   (cond
     text
     (do
-      (set! (.-font ctx) "16px sans-serif")
+      (set! (.-font ctx) (str "16px " font-family))
       (set! (.-textAlign ctx) "center")
       (set! (.-textBaseline ctx) "middle")
       (set! (.-fillStyle ctx) "#fff")

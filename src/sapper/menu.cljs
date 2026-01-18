@@ -63,7 +63,7 @@
       (core/button-render b))
 
     ;; Sync ID
-    (set! (.-font ctx) "16px sans-serif")
+    (set! (.-font ctx) (str "16px " core/font-family))
     (set! (.-textAlign ctx) "left")
     (set! (.-textBaseline ctx) "middle")
     (set! (.-fillStyle ctx) "#fff")
