@@ -1,3 +1,5 @@
+- [ ] Flags/cells count as a number
+- [ ] Controls on the left on iPad?
 - [ ] Migrate game.cljs drag-x/y to core/pointer-pos
 - [ ] Translate canvas so that safe are becomes 0, 0
 - [ ] Victory/game over should be over notes
@@ -16,6 +18,7 @@
 - [ ] Setting screen
 - [ ] New id button
 - [ ] Reset progress button
+- [ ] Show place of explosion
 - [x] Expert mode
 - [x] Game over screen
 - [x] Drag flag from cell
