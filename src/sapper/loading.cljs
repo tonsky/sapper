@@ -2,12 +2,24 @@
   (:require
    [sapper.core :as core :refer [ctx canvas-w canvas-h]]))
 
+(def *show-text?
+  (atom false))
+
+(defn on-enter []
+  (reset! *show-text? false)
+  (core/set-timeout 500
+    #(do
+       (reset! *show-text? true)
+       (core/request-render))))
+
 (defn on-render []
-  (set! (.-font ctx) (str "bold 24px " core/font-family))
-  (set! (.-fillStyle ctx) "#FFF")
-  (set! (.-textAlign ctx) "center")
-  (set! (.-textBaseline ctx) "middle")
-  (.fillText ctx "Loading..." (/ canvas-w 2) (/ canvas-h 2)))
+  (when @*show-text?
+    (set! (.-font ctx) (str "bold 24px " core/font-family))
+    (set! (.-fillStyle ctx) "#FFF")
+    (set! (.-textAlign ctx) "center")
+    (set! (.-textBaseline ctx) "middle")
+    (.fillText ctx "Loading..." (/ canvas-w 2) (/ canvas-h 2))))
 
 (assoc! core/screens :loading
-  {:on-render on-render})
+  {:on-enter on-enter
+   :on-render on-render})
