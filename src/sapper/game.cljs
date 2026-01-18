@@ -338,14 +338,15 @@
     ;; Draw notes
     (.clearRect notes-ctx 0 0 canvas-w canvas-h)
     (let [[sa-x sa-y] safe-area]
-      (doseq [stroke notes
+      (doseq [[dx dy color] [[1 2 "#00000080"] [0 0 nil]]
+              stroke notes
               :let [t         (:tool stroke)
                     points    (:points stroke)
                     nth-point #(let [[x y] (aget points %)]
-                                 [(+ x sa-x) (+ y sa-y)])]]
+                                 [(+ x sa-x dx) (+ y sa-y dy)])]]
         (when (seq points)
           (set! (.-lineWidth notes-ctx) (case t :eraser 40 6))
-          (set! (.-strokeStyle notes-ctx) (get tool-colors t "#000"))
+          (set! (.-strokeStyle notes-ctx) (or color (get tool-colors t) "#000"))
           (set! (.-lineCap notes-ctx) "round")
           (set! (.-lineJoin notes-ctx) "round")
           (set! (.-globalCompositeOperation notes-ctx) (case t :eraser "destination-out" "source-over"))
