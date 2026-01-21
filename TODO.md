@@ -1,7 +1,7 @@
-- [ ] Open cells count as a number
+- [ ] Unopened cells count as a number
 - [ ] Controls on the left on iPad?
 - [ ] Migrate game.cljs drag-x/y to core/pointer-pos
-- [ ] Translate canvas so that safe are becomes 0, 0
+- [ ] Translate canvas so that safe area becomes 0, 0
 - [ ] Victory/game over should be over notes
 - [ ] Auto-finish when only empty left/flags == empty
 - [ ] Pencils/drawing

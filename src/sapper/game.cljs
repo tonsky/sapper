@@ -633,9 +633,9 @@
           rel-x       (- x sa-x)
           rel-y       (- y sa-y)
           num-points  (count points)]
-      (if false #_(and
-                    (>= num-points 2)
-                    (< (core/dist (last points) (core/penultimate points)) 5))
+      (if (and
+            (>= num-points 2)
+            (< (core/dist (last points) (core/penultimate points)) 5))
         (aset points (dec num-points) [rel-x rel-y])
         (conj! points [rel-x rel-y]))))
   (when (or
