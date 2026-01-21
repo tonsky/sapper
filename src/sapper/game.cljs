@@ -10,6 +10,7 @@
 (def puzzle nil)
 
 (def modern true)
+(def auto-open-enabled false)
 (def cell-size 70)
 (def margin (-> sprite-size (- cell-size) (/ 2)))
 (def field {})
@@ -457,7 +458,8 @@
                       #_(println "no" field)
                       (assoc! (get field key) :open true)
                       (update-field)
-                      (maybe-auto-open gx gy))))))))
+                      (when auto-open-enabled
+                        (maybe-auto-open gx gy)))))))))
 
 (defn flag-cell [gx gy]
   (when (= :new phase)
@@ -500,7 +502,8 @@
           (case op
             :open (open-cell nx ny)
             :flag (flag-cell nx ny))
-          (set! auto-open-queue (concat auto-open-queue all-new-nbs))
+          (when auto-open-enabled
+            (set! auto-open-queue (concat auto-open-queue all-new-nbs)))
           (set! auto-open-timer (core/set-timeout auto-open-dt auto-open)))
         (recur (next queue)))
       (do

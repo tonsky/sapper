@@ -16,6 +16,7 @@
 - [ ] Setting screen
 - [ ] New id button
 - [ ] Reset progress button
+- [x] Made auto-open a setting
 - [x] Victory/game over should be over notes
 - [x] Show overall progress per type
 - [x] Highlight last finished puzzle
