@@ -6,8 +6,10 @@
 
 (def canvas nil)
 (def ctx nil)
-(def offscreen-canvas nil)
-(def offscreen-ctx nil)
+(def notes-canvas nil)
+(def notes-ctx nil)
+(def overlay-canvas nil)
+(def overlay-ctx nil)
 (def canvas-w 0)
 (def canvas-h 0)
 (def canvas-scale 1)
@@ -53,6 +55,8 @@
 (defn render [screen]
   (reset! *render-requested false)
   (.clearRect ctx 0 0 canvas-w canvas-h)
+  (.clearRect notes-ctx 0 0 canvas-w canvas-h)
+  (.clearRect overlay-ctx 0 0 canvas-w canvas-h)
 
   ;; safe area
   (let [[l t w h] safe-area]
@@ -188,27 +192,27 @@
 
 (defn button-render [{:keys [l t w h text icon hover disabled]}]
   (let [[left top _ _] safe-area]
-  (when disabled
-    (set! (.-globalAlpha ctx) 0.5))
+    (when disabled
+      (set! (.-globalAlpha ctx) 0.5))
 
-  (set! (.-fillStyle ctx) (if (and hover (not disabled)) "#466689" "#2e4d6f"))
-  (.beginPath ctx)
-  (.roundRect ctx (+ left l) (+ top t) w h 4)
-  (.fill ctx)
-  (cond
-    text
-    (do
-      (set! (.-font ctx) "16px font")
-      (set! (.-textAlign ctx) "center")
-      (set! (.-textBaseline ctx) "middle")
-      (set! (.-fillStyle ctx) "#fff")
-      (.fillText ctx text (+ left l (quot w 2)) (+ top t (quot h 2))))
+    (set! (.-fillStyle ctx) (if (and hover (not disabled)) "#466689" "#2e4d6f"))
+    (.beginPath ctx)
+    (.roundRect ctx (+ left l) (+ top t) w h 4)
+    (.fill ctx)
+    (cond
+      text
+      (do
+        (set! (.-font ctx) "16px font")
+        (set! (.-textAlign ctx) "center")
+        (set! (.-textBaseline ctx) "middle")
+        (set! (.-fillStyle ctx) "#fff")
+        (.fillText ctx text (+ left l (quot w 2)) (+ top t (quot h 2))))
 
-    icon
-    (.drawImage ctx (get images icon) (+ left l (quot (- w sprite-size) 2)) (+ top t (quot (- h sprite-size) 2)) sprite-size sprite-size))
+      icon
+      (.drawImage ctx (get images icon) (+ left l (quot (- w sprite-size) 2)) (+ top t (quot (- h sprite-size) 2)) sprite-size sprite-size))
 
-  (when disabled
-    (set! (.-globalAlpha ctx) 1))))
+    (when disabled
+      (set! (.-globalAlpha ctx) 1))))
 
 (defn button-on-pointer-move [button e]
   (let [[left top _ _] safe-area
@@ -386,10 +390,15 @@
     (.resetTransform ctx)
     (.scale ctx canvas-scale canvas-scale)
 
-    (set! (.-width offscreen-canvas) dw)
-    (set! (.-height offscreen-canvas) dh)
-    (.resetTransform offscreen-ctx)
-    (.scale offscreen-ctx canvas-scale canvas-scale)
+    (set! (.-width notes-canvas) dw)
+    (set! (.-height notes-canvas) dh)
+    (.resetTransform notes-ctx)
+    (.scale notes-ctx canvas-scale canvas-scale)
+
+    (set! (.-width overlay-canvas) dw)
+    (set! (.-height overlay-canvas) dh)
+    (.resetTransform overlay-ctx)
+    (.scale overlay-ctx canvas-scale canvas-scale)
     (request-render)))
 
 (defn on-load []
@@ -397,15 +406,18 @@
 
   (reset! *sync-id
     (or (js/localStorage.getItem "sapper/id")
-        (let [id (gen-sync-id)]
-          (js/localStorage.setItem "sapper/id" id)
-          id)))
+      (let [id (gen-sync-id)]
+        (js/localStorage.setItem "sapper/id" id)
+        id)))
 
-  (set! canvas           (.querySelector js/document "#canvas"))
-  (set! ctx              (.getContext canvas "2d"))
-  (set! offscreen-canvas (js/document.createElement "canvas"))
-  (set! offscreen-ctx    (.getContext offscreen-canvas "2d"))
+  (set! canvas         (.querySelector js/document "#canvas"))
+  (set! ctx            (.getContext canvas "2d"))
+  (set! notes-canvas   (.querySelector js/document "#notes"))
+  (set! notes-ctx      (.getContext notes-canvas "2d"))
+  (set! overlay-canvas (.querySelector js/document "#overlay"))
+  (set! overlay-ctx    (.getContext overlay-canvas "2d"))
   (on-resize)
+
   (maybe-upgrade-storage)
 
   ;; Prevent all scrolling and rubber band effect
@@ -454,7 +466,7 @@
 
   (let [*start  (atom nil)
         *device (atom nil)]
-    (add-event-listener canvas "touchstart"
+    (add-event-listener overlay-canvas "touchstart"
       (fn [e]
         (.preventDefault e)
         (let [[x y] (rel-coords (aget (.-touches e) 0))]
@@ -463,21 +475,21 @@
           (reset! *device :touch)
           (call-screen-fn :on-pointer-down {:x x :y y :device @*device}))))
 
-    (add-event-listener canvas "touchmove"
+    (add-event-listener overlay-canvas "touchmove"
       (fn [e]
         (.preventDefault e)
         (let [[x y] (rel-coords (aget (.-touches e) 0))]
           (set! pointer-pos [x y])
           (call-screen-fn :on-pointer-move (merge @*start {:x x :y y :device @*device})))))
 
-    (add-event-listener canvas "touchend"
+    (add-event-listener overlay-canvas "touchend"
       (fn [e]
         (.preventDefault e)
         (let [[x y] (rel-coords (aget (.-changedTouches e) 0))]
           (call-screen-fn :on-pointer-up (merge @*start {:x x :y y :device @*device}))
           (reset! *device nil))))
 
-    (add-event-listener canvas "mousedown"
+    (add-event-listener overlay-canvas "mousedown"
       (fn [e]
         (when-some [device (case (.-button e)
                              0 :mouse-left
@@ -489,14 +501,14 @@
             (reset! *device device)
             (call-screen-fn :on-pointer-down {:x x :y y :device @*device})))))
 
-    (add-event-listener canvas "mousemove"
+    (add-event-listener overlay-canvas "mousemove"
       (fn [e]
         (when-some [device (or @*device :mouse-hover)]
           (let [[x y] (rel-coords e)]
             (set! pointer-pos [x y])
             (call-screen-fn :on-pointer-move (merge @*start {:x x :y y :device device}))))))
 
-    (add-event-listener canvas "mouseup"
+    (add-event-listener overlay-canvas "mouseup"
       (fn [e]
         (when-some [device @*device]
           (let [[x y] (rel-coords e)]

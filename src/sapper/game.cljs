@@ -1,7 +1,7 @@
 (ns sapper.game
   (:require
    [clojure.string :as str]
-   [sapper.core :as core :refer [canvas ctx offscreen-canvas offscreen-ctx canvas-w canvas-h canvas-scale dpi images safe-area sprite-size]]
+   [sapper.core :as core :refer [canvas ctx notes-ctx overlay-ctx canvas-w canvas-h canvas-scale dpi images safe-area sprite-size]]
    [sapper.level-select :as level-select]
    [sapper.solver :as solver])
   (:require-macros
@@ -316,16 +316,6 @@
           (set! (.-fillStyle ctx) "#FA8787")
           (.fillText ctx (str visible-flags) number-left (+ t (quot h 2))))))
 
-    ;; Dragged flag
-    (when dragging-flag
-      (let [flag-img (get images "flag.png")]
-        (.drawImage ctx flag-img
-          (-> drag-x (- margin) (- (quot cell-size 2)))
-          (-> drag-y (- margin) (- (case drag-device
-                                     :mouse-left (quot cell-size 2)
-                                     :touch      cell-size)))
-          sprite-size sprite-size)))
-
     ;; Tools
     (let [width       (* (count tools) tool-size)
           left        (quot (- canvas-w width) 2)
@@ -338,58 +328,66 @@
 
     ;; Draw notes
     (let [[sa-x sa-y] safe-area]
-      (doseq [[dx dy mode] [[2 2 :shadow] [0 0 :stroke]]]
-        (.clearRect offscreen-ctx 0 0 canvas-w canvas-h)
         (doseq [stroke notes
+                [dx dy mode] [[2 2 :shadow] [0 0 :stroke]]
                 :let [t         (:tool stroke)
                       points    (:points stroke)
                       nth-point #(let [[x y] (aget points %)]
                                    [(+ x sa-x dx) (+ y sa-y dy)])]]
           (when (seq points)
-            (set! (.-lineWidth offscreen-ctx) (case t :eraser 40 6))
-            (set! (.-strokeStyle offscreen-ctx)
+            (set! (.-lineWidth notes-ctx) (case t :eraser 40 6))
+            (set! (.-strokeStyle notes-ctx)
               (cond
                 (= :eraser t)    "#000"
                 (= :shadow mode) "#00000080"
                 :else            (get tool-colors t)))
-            (set! (.-lineCap offscreen-ctx) "round")
-            (set! (.-lineJoin offscreen-ctx) "round")
-            (set! (.-globalCompositeOperation offscreen-ctx) (case t :eraser "destination-out" "source-over"))
-            (.beginPath offscreen-ctx)
+            (set! (.-lineCap notes-ctx) "round")
+            (set! (.-lineJoin notes-ctx) "round")
+            (set! (.-globalCompositeOperation notes-ctx) (case t :eraser "destination-out" "source-over"))
+            (.beginPath notes-ctx)
             (let [[x y] (nth-point 0)]
-              (.moveTo offscreen-ctx x y))
+              (.moveTo notes-ctx x y))
             (dotimes [i (dec (count points))]
               (let [[x1 y1] (nth-point i)
                     [x2 y2] (nth-point (inc i))]
-                (.quadraticCurveTo offscreen-ctx x1 y1 (/ (+ x1 x2) 2) (/ (+ y1 y2) 2))))
+                (.quadraticCurveTo notes-ctx x1 y1 (/ (+ x1 x2) 2) (/ (+ y1 y2) 2))))
             (let [[x y] (nth-point (dec (count points)))]
-              (.lineTo offscreen-ctx x y))
+              (.lineTo notes-ctx x y))
 
-            (.stroke offscreen-ctx)
-            (set! (.-globalCompositeOperation offscreen-ctx) "source-over")))
-        (.drawImage ctx offscreen-canvas 0 0 (.-width offscreen-canvas) (.-height offscreen-canvas) 0 0 canvas-w canvas-h)))
+            (.stroke notes-ctx)
+            (set! (.-globalCompositeOperation notes-ctx) "source-over"))))
 
     ;; Eraser cursor
     (when (and drag-x drag-y
             (or
               (= :eraser tool)
               (and tool (= :mouse-right drag-device))))
-      (set! (.-strokeStyle ctx) "#FFFFFF20")
-      (set! (.-lineWidth ctx) 1)
-      (.beginPath ctx)
-      (.arc ctx drag-x drag-y 20 0 (* 2 js/Math.PI))
-      (.stroke ctx))
+      (set! (.-strokeStyle overlay-ctx) "#FFFFFF20")
+      (set! (.-lineWidth overlay-ctx) 1)
+      (.beginPath overlay-ctx)
+      (.arc overlay-ctx drag-x drag-y 20 0 (* 2 js/Math.PI))
+      (.stroke overlay-ctx))
+
+    ;; Dragged flag
+    (when dragging-flag
+      (let [flag-img (get images "flag.png")]
+        (.drawImage overlay-ctx flag-img
+          (-> drag-x (- margin) (- (quot cell-size 2)))
+          (-> drag-y (- margin) (- (case drag-device
+                                     :mouse-left (quot cell-size 2)
+                                     :touch      cell-size)))
+          sprite-size sprite-size)))
 
     ;; End game screen
     (when (#{:game-over :victory} phase)
-      (set! (.-fillStyle ctx) "#07294798")
-      (.fillRect ctx 0 (+ grid-y (quot (- grid-h 90) 2)) canvas-w 90)
-      (set! (.-font ctx) "bold 40px font")
-      (set! (.-textAlign ctx) "center")
-      (set! (.-textBaseline ctx) "middle")
-      (set! (.-fillStyle ctx) "#FFF")
-      (.fillText ctx (case phase :game-over "Game Over :(" :victory "Victory!")
-        (+ grid-x (quot grid-w 2)) (+ grid-y (quot grid-h 2))))
+        (set! (.-fillStyle overlay-ctx) "#07294798")
+        (.fillRect overlay-ctx 0 (+ grid-y (quot (- grid-h 90) 2)) canvas-w 90)
+        (set! (.-font overlay-ctx) "bold 40px font")
+        (set! (.-textAlign overlay-ctx) "center")
+        (set! (.-textBaseline overlay-ctx) "middle")
+        (set! (.-fillStyle overlay-ctx) "#FFF")
+        (.fillText overlay-ctx (case phase :game-over "Game Over :(" :victory "Victory!")
+          (+ grid-x (quot grid-w 2)) (+ grid-y (quot grid-h 2))))
 
     ;; Animation
     (when (< anim-progress 1)
