@@ -2,7 +2,6 @@
 - [ ] Controls on the left on iPad?
 - [ ] Migrate game.cljs drag-x/y to core/pointer-pos
 - [ ] Translate canvas so that safe area becomes 0, 0
-- [ ] Auto-finish when only empty left/flags == empty
 - [ ] Pencils/drawing
   - [x] Basic drawing
   - [x] Erase with right mouse
@@ -16,6 +15,7 @@
 - [ ] Setting screen
 - [ ] New id button
 - [ ] Reset progress button
+- [x] Auto-finish when only empty left/flags == empty
 - [x] Made auto-open a setting
 - [x] Victory/game over should be over notes
 - [x] Show overall progress per type

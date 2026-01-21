@@ -51,7 +51,7 @@
 (def auto-open-timer nil)
 (def auto-open-dt 32.333333)
 
-(declare open-cell flag-cell maybe-auto-open)
+(declare open-cell flag-cell maybe-auto-open auto-finish!)
 
 (defn neighbours [x y]
   (concat
@@ -118,6 +118,14 @@
     (:flagged cell)
     (:open cell)))
 
+(defn can-auto-finish? []
+  (when (#{:new :play} phase)
+    (let [unprocessed (->> field vals (remove processed) count)]
+      (when (pos? unprocessed)
+        (cond
+          (= flags 0)        :open-all
+          (= flags unprocessed) :flag-all)))))
+
 (defn undo []
   (when (seq notes)
     (.pop notes)
@@ -149,6 +157,7 @@
       (set! outline-y nil)))
   (set! flags (- (->> field vals (filter :mine) count)
                 (->> field vals (filter :flagged) (count))))
+  (assoc! (:finish buttons) :disabled (not (can-auto-finish?)))
   (when (->> field vals (every? processed))
     (core/append-history (:id puzzle) :win)
     (set! phase :victory))
@@ -164,9 +173,10 @@
         len              (count code)]
 
     (set! buttons
-      [{:l 25 :t 25 :w 50 :h 50 :icon "btn_back.png"   :on-click #(reset! core/*screen [:level-select (:type puzzle)])}
-       {:l 100 :t 25 :w 50 :h 50 :icon "btn_reload.png" :on-click core/reload}
-       {:l (- width 75) :t 25 :w 50 :h 50 :icon "btn_random.png" :on-click #(core/load-random-puzzle (:type puzzle))}])
+      {:back   {:l 25 :t 25 :w 50 :h 50 :icon "btn_back.png"   :on-click #(reset! core/*screen [:level-select (:type puzzle)])}
+       :reload {:l 100 :t 25 :w 50 :h 50 :icon "btn_reload.png" :on-click core/reload}
+       :finish {:l (- width 165) :t 25 :w 80 :h 50 :text "Finish" :on-click auto-finish! :disabled true}
+       :random {:l (- width 75) :t 25 :w 50 :h 50 :icon "btn_random.png" :on-click #(core/load-random-puzzle (:type puzzle))}})
 
     (set! phase :init)
     (set! field-w (parse-long fw))
@@ -218,7 +228,7 @@
     (.fillText ctx id 13 47)
 
     ;; buttons
-    (doseq [b buttons]
+    (doseq [b (vals buttons)]
       (core/button-render b))
 
     ;; cells
@@ -476,6 +486,16 @@
                      (assoc! (get field key) :flagged true)
                      (update-field)))))
 
+(defn auto-finish! []
+  (when-some [action (can-auto-finish?)]
+    (let [unprocessed (shuffle (remove #(processed (second %)) field))]
+      (doseq [[i [k cell]] (core/indexed unprocessed)
+              :let [[gx gy] (parse-key k)]]
+        (core/set-timeout (* auto-open-dt i)
+          (case action
+            :open-all #(open-cell gx gy)
+            :flag-all #(flag-cell gx gy)))))))
+
 (defn can-auto-open [gx gy]
   (let [cell (get-cell gx gy)]
     (when (and
@@ -630,7 +650,7 @@
       (core/request-render))))
 
 (defn on-pointer-move [{:keys [x y device] :as e}]
-  (doseq [b buttons]
+  (doseq [b (vals buttons)]
     (core/button-on-pointer-move b e))
 
   (when (and (#{:mouse-left :mouse-right :touch} device) tool (seq notes))
@@ -653,7 +673,7 @@
     (core/request-render)))
 
 (defn on-pointer-up [{:keys [x y start-x start-y device] :as e}]
-  (doseq [b buttons]
+  (doseq [b (vals buttons)]
     (core/button-on-pointer-up b e))
 
   (set! drag-x nil)

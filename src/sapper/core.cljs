@@ -195,7 +195,11 @@
     (when disabled
       (set! (.-globalAlpha ctx) 0.5))
 
-    (set! (.-fillStyle ctx) (if (and hover (not disabled)) "#466689" "#2e4d6f"))
+    (set! (.-fillStyle ctx)
+      (cond
+        disabled "#2e4d6f"
+        hover    "#466689"
+        :else    "#2e4d6f"))
     (.beginPath ctx)
     (.roundRect ctx (+ left l) (+ top t) w h 4)
     (.fill ctx)
@@ -205,7 +209,7 @@
         (set! (.-font ctx) "16px font")
         (set! (.-textAlign ctx) "center")
         (set! (.-textBaseline ctx) "middle")
-        (set! (.-fillStyle ctx) "#fff")
+        (set! (.-fillStyle ctx) (if disabled "#082848" "#fff"))
         (.fillText ctx text (+ left l (quot w 2)) (+ top t (quot h 2))))
 
       icon
@@ -232,9 +236,9 @@
 
 (defn button-on-pointer-up [button e]
   (let [[left top _ _] safe-area
-        {:keys [l t w h text hover on-click]} button
+        {:keys [l t w h text hover on-click disabled]} button
         {:keys [x y start-x start-y]} e]
-    (when (and (both-inside? x y start-x start-y (+ left l) (+ top t) w h) on-click)
+    (when (and (not disabled) (both-inside? x y start-x start-y (+ left l) (+ top t) w h) on-click)
       (on-click e))))
 
 ;; STORAGE
@@ -441,7 +445,7 @@
       (.preventDefault e)))
 
   ;; Prevent context menu
-  (add-event-listener canvas "contextmenu"
+  (add-event-listener overlay-canvas "contextmenu"
     (fn [e]
       (.preventDefault e)))
 
