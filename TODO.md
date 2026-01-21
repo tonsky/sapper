@@ -4,6 +4,7 @@
 - [ ] Translate canvas so that safe are becomes 0, 0
 - [ ] Victory/game over should be over notes
 - [ ] Auto-finish when only empty left/flags == empty
+- [ ] Show overall progress per type
 - [ ] Pencils/drawing
   - [x] Basic drawing
   - [x] Erase with right mouse
@@ -17,6 +18,7 @@
 - [ ] Setting screen
 - [ ] New id button
 - [ ] Reset progress button
+- [x] Highlight last finished puzzle
 - [x] Show place of explosion
 - [x] Flags count as a number
 - [x] Return random button to game screen

@@ -21,6 +21,7 @@
 (def puzzles-by-type {})
 (def *sync-id (atom nil))
 (def pointer-pos [0 0])
+(def *last-puzzle-id (atom nil))
 
 ;; RENDERING
 
@@ -254,20 +255,25 @@
 (defn valid-history-line? [line]
   (and line (re-matches #"\d+ \w+ \w" line)))
 
-(defn get-history [type]
-  (vec
-    (for [line (str/split (or (js/localStorage.getItem (history-key type)) "") #"\n")
-          :when (valid-history-line? line)
-          :let [[t short-id op] (str/split line #"\s")]]
+(defn parse-history-line [type line]
+  (when (valid-history-line? line)
+    (let [[t short-id op] (str/split line #"\s")]
       {:id   (str type "-" short-id)
        :op   (case op "s" :start "l" :lose "w" :win)
        :date (short-date->date t)})))
 
-(defn puzzle-statuses [type]
+(defn get-history [type history]
+  (-> (or history (js/localStorage.getItem (history-key type)) "")
+    (str/split #"\n")
+    (->>
+      (keep #(parse-history-line type %))
+      (vec))))
+
+(defn puzzle-statuses [type history]
   (let [won     #{}
         started #{}
         lost    #{}]
-    (doseq [{:keys [op id]} (get-history type)]
+    (doseq [{:keys [op id]} (or history (get-history type))]
       (case op
         :win   (.add won id)
         :start (.add started id)
@@ -304,19 +310,18 @@
                 merged-history (if (seq sorted-lines)
                                  (str (str/join "\n" sorted-lines) "\n")
                                  "")]
-
             (when (not= merged-history server-history)
               (js/fetch url
                 #js {:method  "PUT"
                      :body    merged-history
                      :headers #js {"Content-Type" "text/plain"}}))
-
             (when (not= merged-history local-history)
-              (js/localStorage.setItem key merged-history)
-              (when cb
-                (cb merged-history)))))))))
+              (js/localStorage.setItem key merged-history))
+            (when cb
+              (cb sorted-lines))))))))
 
 (defn append-history [id op]
+  (reset! *last-puzzle-id id)
   (let [[type short-id] (split-puzzle-id id)
         v               (or (js/localStorage.getItem (history-key type)) "")
         t'              (date->short-date (js/Date.now))

@@ -21,9 +21,10 @@
        {:l 100 :t 25 :w 50 :h 50 :icon "btn_reload.png" :on-click core/reload}
        {:l (- width 75) :t 25 :w 50 :h 50 :icon "btn_random.png" :on-click #(core/load-random-puzzle type)}])
     (core/sync-history t
-      (fn [_]
-        (set! statuses (core/puzzle-statuses t))
-        (core/render)))))
+      (fn [lines]
+        (let [parsed (keep #(core/parse-history-line t %) lines)]
+          (set! statuses (core/puzzle-statuses t parsed))
+          (core/render))))))
 
 (defn on-render []
   (doseq [b buttons]
@@ -49,7 +50,9 @@
                                  (contains? started id)              200
                                  hover?                              100
                                  :else                               0)
-                  sprite-top   (-> (core/random rng) (* 5) js/Math.floor (* 100))]]
+                  sprite-top   (if (= @core/*last-puzzle-id id)
+                                 500
+                                 (-> (core/random rng) (* 5) js/Math.floor (* 100)))]]
       (when (< (+ (* y 18) x) (count puzzles))
         (.drawImage ctx img
           sprite-left sprite-top 100 100
