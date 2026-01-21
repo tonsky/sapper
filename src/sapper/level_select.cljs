@@ -30,7 +30,8 @@
   (doseq [b buttons]
     (core/button-render b))
 
-  (let [[left top _ _] core/safe-area
+  ;; puzzles
+  (let [[left top width _] core/safe-area
         puzzles (get core/puzzles-by-type type)
         {:keys [won lost started]} statuses
         img     (get core/images "level_select.png")
@@ -57,7 +58,25 @@
         (.drawImage ctx img
           sprite-left sprite-top 100 100
           (+ left 20 (* x 30) -10)
-          (+  top 100 (* y 30) -10) 50 50)))))
+          (+  top 100 (* y 30) -10) 50 50)))
+
+    ;; progress
+    (set! (.-font ctx) "16px font")
+    (set! (.-textAlign ctx) "left")
+    (set! (.-textBaseline ctx) "middle")
+    (set! (.-fillStyle ctx) "#FFF")
+    (let [won    (count (:won statuses))
+          total  (count puzzles)
+          pct    (-> won (/ total) (* 100) js/Math.round)
+          text   (str won " / " total " (" pct "%)")
+          text-w (:width (.measureText ctx text))
+          left   (-> left (+ (quot width 2)) (- (quot text-w 2)))]
+      (.fillText ctx text left (+ top 50))
+
+      (set! (.-fillStyle ctx) "#2E4D6F")
+      (.fillRect ctx left (+ top 62) text-w 3)
+      (set! (.-fillStyle ctx) "#4FCD6F")
+      (.fillRect ctx left (+ top 62) (-> text-w (* (/ won total)) js/Math.round) 3))))
 
 (defn mouse->idx [x y]
   (let [[left top _ _] core/safe-area]
