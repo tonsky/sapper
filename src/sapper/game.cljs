@@ -1,7 +1,7 @@
 (ns sapper.game
   (:require
    [clojure.string :as str]
-   [sapper.core :as core :refer [canvas ctx notes-ctx canvas-w canvas-h canvas-scale dpi images safe-area sprite-size]]
+   [sapper.core :as core :refer [canvas ctx offscreen-canvas offscreen-ctx canvas-w canvas-h canvas-scale dpi images safe-area sprite-size]]
    [sapper.level-select :as level-select]
    [sapper.solver :as solver])
   (:require-macros
@@ -336,32 +336,37 @@
         (.drawImage ctx img (- x tool-margin) (- y tool-margin) sprite-size sprite-size)))
 
     ;; Draw notes
-    (.clearRect notes-ctx 0 0 canvas-w canvas-h)
     (let [[sa-x sa-y] safe-area]
-      (doseq [[dx dy color] [[1 2 "#00000080"] [0 0 nil]]
-              stroke notes
-              :let [t         (:tool stroke)
-                    points    (:points stroke)
-                    nth-point #(let [[x y] (aget points %)]
-                                 [(+ x sa-x dx) (+ y sa-y dy)])]]
-        (when (seq points)
-          (set! (.-lineWidth notes-ctx) (case t :eraser 40 6))
-          (set! (.-strokeStyle notes-ctx) (or color (get tool-colors t) "#000"))
-          (set! (.-lineCap notes-ctx) "round")
-          (set! (.-lineJoin notes-ctx) "round")
-          (set! (.-globalCompositeOperation notes-ctx) (case t :eraser "destination-out" "source-over"))
-          (.beginPath notes-ctx)
-          (let [[x y] (nth-point 0)]
-            (.moveTo notes-ctx x y))
-          (dotimes [i (dec (count points))]
-            (let [[x1 y1] (nth-point i)
-                  [x2 y2] (nth-point (inc i))]
-              (.quadraticCurveTo notes-ctx x1 y1 (/ (+ x1 x2) 2) (/ (+ y1 y2) 2))))
-          (let [[x y] (nth-point (dec (count points)))]
-            (.lineTo notes-ctx x y))
+      (doseq [[dx dy mode] [[2 2 :shadow] [0 0 :stroke]]]
+        (.clearRect offscreen-ctx 0 0 canvas-w canvas-h)
+        (doseq [stroke notes
+                :let [t         (:tool stroke)
+                      points    (:points stroke)
+                      nth-point #(let [[x y] (aget points %)]
+                                   [(+ x sa-x dx) (+ y sa-y dy)])]]
+          (when (seq points)
+            (set! (.-lineWidth offscreen-ctx) (case t :eraser 40 6))
+            (set! (.-strokeStyle offscreen-ctx)
+              (cond
+                (= :eraser t)    "#000"
+                (= :shadow mode) "#00000080"
+                :else            (get tool-colors t)))
+            (set! (.-lineCap offscreen-ctx) "round")
+            (set! (.-lineJoin offscreen-ctx) "round")
+            (set! (.-globalCompositeOperation offscreen-ctx) (case t :eraser "destination-out" "source-over"))
+            (.beginPath offscreen-ctx)
+            (let [[x y] (nth-point 0)]
+              (.moveTo offscreen-ctx x y))
+            (dotimes [i (dec (count points))]
+              (let [[x1 y1] (nth-point i)
+                    [x2 y2] (nth-point (inc i))]
+                (.quadraticCurveTo offscreen-ctx x1 y1 (/ (+ x1 x2) 2) (/ (+ y1 y2) 2))))
+            (let [[x y] (nth-point (dec (count points)))]
+              (.lineTo offscreen-ctx x y))
 
-          (.stroke notes-ctx)
-          (set! (.-globalCompositeOperation notes-ctx) "source-over"))))
+            (.stroke offscreen-ctx)
+            (set! (.-globalCompositeOperation offscreen-ctx) "source-over")))
+        (.drawImage ctx offscreen-canvas 0 0 (.-width offscreen-canvas) (.-height offscreen-canvas) 0 0 canvas-w canvas-h)))
 
     ;; Eraser cursor
     (when (and drag-x drag-y

@@ -6,8 +6,8 @@
 
 (def canvas nil)
 (def ctx nil)
-(def notes-canvas nil)
-(def notes-ctx nil)
+(def offscreen-canvas nil)
+(def offscreen-ctx nil)
 (def canvas-w 0)
 (def canvas-h 0)
 (def canvas-scale 1)
@@ -53,7 +53,6 @@
 (defn render [screen]
   (reset! *render-requested false)
   (.clearRect ctx 0 0 canvas-w canvas-h)
-  (.clearRect notes-ctx 0 0 canvas-w canvas-h)
 
   ;; safe area
   (let [[l t w h] safe-area]
@@ -387,10 +386,10 @@
     (.resetTransform ctx)
     (.scale ctx canvas-scale canvas-scale)
 
-    (set! (.-width notes-canvas) dw)
-    (set! (.-height notes-canvas) dh)
-    (.resetTransform notes-ctx)
-    (.scale notes-ctx canvas-scale canvas-scale)
+    (set! (.-width offscreen-canvas) dw)
+    (set! (.-height offscreen-canvas) dh)
+    (.resetTransform offscreen-ctx)
+    (.scale offscreen-ctx canvas-scale canvas-scale)
     (request-render)))
 
 (defn on-load []
@@ -402,10 +401,10 @@
           (js/localStorage.setItem "sapper/id" id)
           id)))
 
-  (set! canvas       (.querySelector js/document "#canvas"))
-  (set! ctx          (.getContext canvas "2d"))
-  (set! notes-canvas (.querySelector js/document "#notes"))
-  (set! notes-ctx    (.getContext notes-canvas "2d"))
+  (set! canvas           (.querySelector js/document "#canvas"))
+  (set! ctx              (.getContext canvas "2d"))
+  (set! offscreen-canvas (js/document.createElement "canvas"))
+  (set! offscreen-ctx    (.getContext offscreen-canvas "2d"))
   (on-resize)
   (maybe-upgrade-storage)
 
