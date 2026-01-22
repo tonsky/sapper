@@ -49,7 +49,7 @@
 (def auto-open-timer nil)
 (def auto-open-dt 32.333333)
 
-(declare open-cell flag-cell maybe-auto-open auto-finish!)
+(declare open-cell flag-cell maybe-auto-open auto-finish)
 
 (defn neighbours [x y]
   (concat
@@ -121,7 +121,7 @@
     (let [unprocessed (->> field vals (remove processed) count)]
       (when (pos? unprocessed)
         (cond
-          (= flags 0)        :open-all
+          (= flags 0)           :open-all
           (= flags unprocessed) :flag-all)))))
 
 (defn undo []
@@ -173,7 +173,7 @@
     (set! buttons
       {:back     {:l  25           :t 25 :w 50 :h 50 :icon "btn_back.png"     :on-click #(reset! core/*screen [:level-select (:type puzzle)])}
        :restart  {:l (- width 300) :t 25 :w 50 :h 50 :icon "btn_restart.png"  :on-click #(do (on-enter) (core/request-render))}
-       :finish   {:l (- width 225) :t 25 :w 50 :h 50 :icon "btn_finish.png"   :on-click auto-finish! :disabled true}
+       :finish   {:l (- width 225) :t 25 :w 50 :h 50 :icon "btn_finish.png"   :on-click auto-finish :disabled true}
        :random   {:l (- width 150) :t 25 :w 50 :h 50 :icon "btn_random.png"   :on-click #(core/load-random-puzzle (:type puzzle))}
        :settings {:l (- width  75) :t 25 :w 50 :h 50 :icon "btn_settings.png" :on-click #(reset! core/*screen [:settings])}})
 
@@ -495,7 +495,7 @@
                      (assoc! (get field key) :flagged true)
                      (update-field)))))
 
-(defn auto-finish! []
+(defn auto-finish []
   (when-some [action (can-auto-finish?)]
     (let [unprocessed (shuffle (remove #(processed (second %)) field))]
       (doseq [[i [k cell]] (core/indexed unprocessed)
@@ -509,15 +509,17 @@
   (let [cell (get-cell gx gy)]
     (when (and
             (:open cell)
-            (re-matches #"\d+" (or (:label cell) "")))
-      (let [label-num (parse-long (:label cell))
-            nbs       (->> (neighbours gx gy)
-                        (remove (fn [[x y]] (processed (get-cell x y))))
-                        vec)]
+            (not= "q" (:label cell)))
+      (let [nbs         (neighbours gx gy)
+            unprocessed (->> nbs
+                          (remove (fn [[x y]] (processed (get-cell x y))))
+                          vec)
+            mines       (filterv (fn [[x y]] (:mine (get-cell x y))) nbs)
+            flags       (filterv (fn [[x y]] (:flagged (get-cell x y))) nbs)]
         (cond
-          (empty? nbs)              nil
-          (= (count nbs) label-num) [:flag nbs]
-          (= 0 label-num)           [:open nbs])))))
+          (= 0 (count unprocessed))                               nil
+          (= (+ (count flags) (count unprocessed)) (count mines)) [:flag unprocessed]
+          (= (count flags) (count mines))                         [:open unprocessed])))))
 
 (defn auto-open []
   (loop [queue auto-open-queue]

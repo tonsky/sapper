@@ -1,4 +1,3 @@
-- [ ] Fix auto-open in classic mode
 - [ ] Screen titles
 - [ ] Open animation
 - [ ] requestAnimationFrame rendering
@@ -11,6 +10,7 @@
 - [ ] Try highlighting cells instead of outline
 - [ ] New id button
 - [ ] Reset progress button
+- [x] Fix auto-open in classic mode
 - [x] Move reload to settings
 - [x] Keep awake toggle
 - [x] Return from settings should not reset state
