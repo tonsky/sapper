@@ -1,12 +1,16 @@
+- [ ] Keep awake toggle
+- [ ] Open animation
+- [ ] requestAnimationFrame rendering
+- [ ] Sync settings
+- [ ] Store last level state and notes
 - [ ] Unopened cells count as a number
 - [ ] Controls on the left on iPad?
 - [ ] Migrate game.cljs drag-x/y to core/pointer-pos
 - [ ] Translate canvas so that safe area becomes 0, 0
-- [ ] Keep awake toggle
-- [ ] Open animation
 - [ ] Try highlighting cells instead of outline
 - [ ] New id button
 - [ ] Reset progress button
+- [x] Return from settings should not reset state
 - [ ] Pencils/drawing
   - [x] Basic drawing
   - [x] Erase with right mouse

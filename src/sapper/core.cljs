@@ -411,18 +411,20 @@
     [x y]))
 
 (defn on-resize []
-  (let [w      (.-innerWidth js/window)
+  (let [safe-w 580
+        safe-h 1000
+        w      (.-innerWidth js/window)
         h      (.-innerHeight js/window)
         dw     (* w dpi)
         dh     (* h dpi)
         scales [4 3 2.5 2 1.75 1.5 1.25 1 0.75 0.6666667 0.5 0.3333333 0.25]
-        sx     (some #(when (<= (* % 580) dw) %) scales)
-        sy     (some #(when (<= (* % 850) dh) %) scales)
+        sx     (some #(when (<= (* % safe-w) dw) %) scales)
+        sy     (some #(when (<= (* % safe-h) dh) %) scales)
         scale  (min sx sy)]
     (set! canvas-w (-> dw (/ scale) (/ 2) js/Math.floor (* 2)))
     (set! canvas-h (-> dh (/ scale) (/ 2) js/Math.floor (* 2)))
     (set! canvas-scale scale)
-    (set! safe-area [(quot (- canvas-w 580) 2) (quot (- canvas-h 850) 2) 580 850])
+    (set! safe-area [(quot (- canvas-w safe-w) 2) (quot (- canvas-h safe-h) 2) safe-w safe-h])
 
     (set! (.-width canvas) dw)
     (set! (.-height canvas) dh)
@@ -497,10 +499,16 @@
   (add-watch *screen ::on-enter
     (fn [_ _ old new]
       (when (not= old new)
-        (reset! *previous-screen old)
-        (call-screen-fn-impl old :on-exit)
-        (call-screen-fn-impl new :on-enter)
-        (render new))))
+        (let [[prev _] (reset-vals! *previous-screen old)]
+          (if (= [:settings] new)
+            :noop
+            (call-screen-fn-impl old :on-exit))
+          (if (and
+                (= [:settings] old)
+                (= prev new))
+            :noop
+            (call-screen-fn-impl new :on-enter))
+          (render new)))))
 
   (add-event-listener js/window "resize"
     (fn [e]

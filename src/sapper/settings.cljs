@@ -21,21 +21,24 @@
   (show-message "Copied!"))
 
 (defn on-sync-id-paste [_e]
-  (-> (.. js/navigator -clipboard (readText))
-    (.then
-      (fn [text]
-        (if (re-matches #"[a-z0-9]{13}" text)
-          (do
-            (js/localStorage.setItem "sapper/id" text)
-            (reset! core/*sync-id text)
-            (show-message "Pasted!"))
-          (show-message (str "Invalid: " text)))))))
+  (let [text (js/prompt "Paste Sync ID:")]
+    (when (some? text)
+      (if (re-matches #"[a-z0-9]{13}" text)
+        (do
+          (js/localStorage.setItem "sapper/id" text)
+          (reset! core/*sync-id text)
+          (show-message "Pasted!"))
+        (show-message "Invalid Sync ID")))))
 
 (defn on-enter []
   (set! js/window.location.hash "settings")
   (let [[_ _ width _] core/safe-area]
     (set! buttons
-      {:close  {:l (- width 75) :t  25 :w 50 :h 50 :icon "btn_close.png"  :on-click #(reset! core/*screen (or @core/*previous-screen [:menu]))}
+      {:close  {:l (- width 75) :t  25 :w 50 :h 50 :icon "btn_close.png"  :on-click #(reset! core/*screen
+                                                                                       (case @core/*previous-screen
+                                                                                         [:loading] [:menu]
+                                                                                         nil        [:menu]
+                                                                                         @core/*previous-screen))}
        ; :reload {:l 100          :t  25 :w 50 :h 50 :icon "btn_reload.png" :on-click core/reload}
        :copy   {:l 375          :t 760 :w 80 :h 50 :text "Copy"           :on-click on-sync-id-copy}
        :paste  {:l 475          :t 760 :w 80 :h 50 :text "Paste"          :on-click on-sync-id-paste}})
