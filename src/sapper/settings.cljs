@@ -35,10 +35,10 @@
   (set! js/window.location.hash "settings")
   (let [[_ _ width _] core/safe-area]
     (set! buttons
-      {:back   {:l 25 :t 25 :w 50 :h 50 :icon "btn_back.png" :on-click #(reset! core/*screen [:menu])}
-       :reload {:l 100 :t 25 :w 50 :h 50 :icon "btn_reload.png" :on-click core/reload}
-       :copy   {:l 375 :t 760 :w 80 :h 50 :text "Copy" :on-click on-sync-id-copy}
-       :paste  {:l 475 :t 760 :w 80 :h 50 :text "Paste" :on-click on-sync-id-paste}})
+      {:close  {:l (- width 75) :t  25 :w 50 :h 50 :icon "btn_close.png"  :on-click #(reset! core/*screen (or @core/*previous-screen [:menu]))}
+       ; :reload {:l 100          :t  25 :w 50 :h 50 :icon "btn_reload.png" :on-click core/reload}
+       :copy   {:l 375          :t 760 :w 80 :h 50 :text "Copy"           :on-click on-sync-id-copy}
+       :paste  {:l 475          :t 760 :w 80 :h 50 :text "Paste"          :on-click on-sync-id-paste}})
 
     (set! toggles
       (into {}
@@ -96,4 +96,5 @@
   {:on-enter        on-enter
    :on-render       on-render
    :on-pointer-move on-pointer-move
-   :on-pointer-up   on-pointer-up})
+   :on-pointer-up   on-pointer-up
+   :resources       #{"btn_close.png"}})

@@ -171,10 +171,11 @@
         len              (count code)]
 
     (set! buttons
-      {:back   {:l 25 :t 25 :w 50 :h 50 :icon "btn_back.png"   :on-click #(reset! core/*screen [:level-select (:type puzzle)])}
-       :reload {:l 100 :t 25 :w 50 :h 50 :icon "btn_reload.png" :on-click core/reload}
-       :finish {:l (- width 165) :t 25 :w 80 :h 50 :text "Finish" :on-click auto-finish! :disabled true}
-       :random {:l (- width 75) :t 25 :w 50 :h 50 :icon "btn_random.png" :on-click #(core/load-random-puzzle (:type puzzle))}})
+      {:back     {:l  25           :t 25 :w 50 :h 50 :icon "btn_back.png"     :on-click #(reset! core/*screen [:level-select (:type puzzle)])}
+       :reload   {:l 100           :t 25 :w 50 :h 50 :icon "btn_reload.png"   :on-click core/reload}
+       :finish   {:l (- width 225) :t 25 :w 50 :h 50 :icon "btn_finish.png"   :on-click auto-finish! :disabled true}
+       :random   {:l (- width 150) :t 25 :w 50 :h 50 :icon "btn_random.png"   :on-click #(core/load-random-puzzle (:type puzzle))}
+       :settings {:l (- width  75) :t 25 :w 50 :h 50 :icon "btn_settings.png" :on-click #(reset! core/*screen [:settings])}})
 
     (set! phase :init)
     (set! field-w (parse-long fw))
@@ -768,7 +769,8 @@
    :on-pointer-up   on-pointer-up
    :on-pointer-move on-pointer-move
    :on-pointer-down on-pointer-down
-   :resources       #{"0.png" "1.png" "2.png" "3.png" "4.png" "5.png" "6.png" "7.png" "8.png"
+   :resources       #{"btn_finish.png"
+                      "0.png" "1.png" "2.png" "3.png" "4.png" "5.png" "6.png" "7.png" "8.png"
                       "0_solved.png" "1_solved.png" "2_solved.png" "3_solved.png" "4_solved.png" "5_solved.png" "6_solved.png" "7_solved.png" "8_solved.png"
                       "-1.png" "-2.png" "-3.png" "-4.png" "-5.png" "-6.png" "-7.png" "-8.png"
                       "error_0.png" "error_1.png" "error_2.png" "error_3.png" "error_4.png" "error_5.png" "error_6.png" "error_7.png"

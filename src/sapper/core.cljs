@@ -17,6 +17,7 @@
 (def sprite-size 100)
 (def safe-area nil)
 (def *screen (atom [:loading]))
+(def *previous-screen (atom nil))
 (def screens {})
 (def images {})
 (def puzzles-by-id {})
@@ -150,7 +151,7 @@
 (defn-log load-resources [cb]
   (let [t0        (js/Date.now)
         resources (into
-                    #{"btn_back.png" "btn_reload.png" "btn_random.png"
+                    #{"btn_back.png" "btn_reload.png" "btn_random.png" "btn_settings.png"
                       "toggle.png"
                       "CoFoSansSemi-Mono-Regular.woff2" "CoFoSansSemi-Mono-Bold.woff2"}
                     (mapcat :resources (vals screens)))
@@ -495,9 +496,11 @@
   ;; event handlers
   (add-watch *screen ::on-enter
     (fn [_ _ old new]
-      (call-screen-fn-impl old :on-exit)
-      (call-screen-fn-impl new :on-enter)
-      (render new)))
+      (when (not= old new)
+        (reset! *previous-screen old)
+        (call-screen-fn-impl old :on-exit)
+        (call-screen-fn-impl new :on-enter)
+        (render new))))
 
   (add-event-listener js/window "resize"
     (fn [e]
@@ -568,7 +571,8 @@
                      (let [hash   js/window.location.hash
                            hash   (if (str/blank? hash) nil (subs hash 1))
                            screen (str/split (or hash "menu") #"/")]
-                       (reset! *screen screen)))]
+                       (when (not= @*screen screen)
+                         (reset! *screen screen))))]
       (add-event-listener js/window "hashchange" navigate)
       (load-resources navigate))))
 

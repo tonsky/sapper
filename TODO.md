@@ -3,6 +3,10 @@
 - [ ] Migrate game.cljs drag-x/y to core/pointer-pos
 - [ ] Translate canvas so that safe area becomes 0, 0
 - [ ] Keep awake toggle
+- [ ] Open animation
+- [ ] Try highlighting cells instead of outline
+- [ ] New id button
+- [ ] Reset progress button
 - [ ] Pencils/drawing
   - [x] Basic drawing
   - [x] Erase with right mouse
@@ -11,11 +15,7 @@
   - [x] Switch to redrawing entire path
   - [x] Scale notes on resize
   - [x] Undo
-- [ ] Open animation
-- [ ] Try highlighting cells instead of outline
-- [ ] Setting screen
-- [ ] New id button
-- [ ] Reset progress button
+- [x] Setting screen
 - [x] Auto-finish when only empty left/flags == empty
 - [x] Made auto-open a setting
 - [x] Victory/game over should be over notes
