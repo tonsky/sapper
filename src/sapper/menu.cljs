@@ -10,9 +10,7 @@
   (set! types (->> core/puzzles-by-type keys sort))
   (let [[left top width height] core/safe-area]
     (set! buttons
-      [{:l  25 :t  25 :w 50 :h 50 :icon "btn_back.png"   :disabled true}
-       {:l 100 :t  25 :w 50 :h 50 :icon "btn_reload.png" :on-click core/reload}
-       {:l (- width 75) :t 25 :w 50 :h 50 :icon "btn_settings.png" :on-click #(reset! core/*screen [:settings])}])
+      [{:l (- width 75) :t 25 :w 50 :h 50 :icon "btn_settings.png" :on-click #(reset! core/*screen [:settings])}])
 
     (let [cols           4
           rows           (-> (dec (count types)) (quot cols) inc)

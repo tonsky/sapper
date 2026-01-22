@@ -35,6 +35,13 @@
 
 ;; Screen logic
 
+(defn reload []
+  (let [screen @core/*previous-screen]
+    (when (and screen (not= screen [:loading]))
+      (let [hash (str/join "/" screen)]
+        (set! js/window.location.hash hash)))
+    (.reload js/window.location)))
+
 (defn on-enter []
   (set! js/window.location.hash "settings")
   (let [[_ _ width _] core/safe-area]
@@ -44,9 +51,9 @@
                                                                                          [:loading] [:menu]
                                                                                          nil        [:menu]
                                                                                          @core/*previous-screen))}
-       ; :reload {:l 100          :t  25 :w 50 :h 50 :icon "btn_reload.png" :on-click core/reload}
-       :copy   {:l 375          :t 760 :w 80 :h 50 :text "Copy"           :on-click on-sync-id-copy}
-       :paste  {:l 475          :t 760 :w 80 :h 50 :text "Paste"          :on-click on-sync-id-paste}})
+       :copy   {:l 200          :t 560 :w  80 :h 50 :text "Copy"           :on-click on-sync-id-copy}
+       :paste  {:l 290          :t 560 :w  80 :h 50 :text "Paste"          :on-click on-sync-id-paste}
+       :reload {:l 200          :t 670 :w 120 :h 50 :text "Reload app"     :on-click reload}})
 
     (set! toggles
       (into {}
@@ -74,20 +81,20 @@
     (set! (.-textAlign ctx) "left")
     (set! (.-textBaseline ctx) "middle")
     (set! (.-fillStyle ctx) "#fff")
-    (.fillText ctx "Sync ID" (+ left 45) (+ top 760 25))
+    (.fillText ctx "Sync ID" (+ left 120) (+ top 500 25))
 
     (set! (.-lineWidth ctx) 1)
     (set! (.-strokeStyle ctx) "#2e4d6f")
     (.beginPath ctx)
-    (.roundRect ctx (+ left 125) (+ top 760) 230 50 4)
+    (.roundRect ctx (+ left 200) (+ top 500) 230 50 4)
     (.stroke ctx)
 
     (.save ctx)
     (.beginPath ctx)
-    (.rect ctx (+ left 125) (+ top 760) 230 50)
+    (.rect ctx (+ left 200) (+ top 500) 230 50)
     (.clip ctx)
     (set! (.-fillStyle ctx) (if (and sync-message (str/starts-with? sync-message "Invalid: ")) "#ff0000" "#fff"))
-    (.fillText ctx (or sync-message @core/*sync-id) (+ left 125 15) (+ top 760 25))
+    (.fillText ctx (or sync-message @core/*sync-id) (+ left 200 15) (+ top 500 25))
     (.restore ctx)))
 
 (defn on-pointer-move [e]

@@ -128,10 +128,6 @@
      :type type
      :code code}))
 
-(defn reload []
-  #_(reset! *screen @*screen)
-  (.reload (.-location js/window)))
-
 (defn load-random-puzzle [type]
   (let [puzzles (mapv :id (get puzzles-by-type type))
         {:keys [won lost started]} (puzzle-statuses)
@@ -152,7 +148,7 @@
 (defn-log load-resources [cb]
   (let [t0        (js/Date.now)
         resources (into
-                    #{"btn_back.png" "btn_reload.png" "btn_random.png" "btn_settings.png"
+                    #{"btn_back.png" "btn_random.png" "btn_settings.png"
                       "toggle.png"
                       "CoFoSansSemi-Mono-Regular.woff2" "CoFoSansSemi-Mono-Bold.woff2"}
                     (mapcat :resources (vals screens)))

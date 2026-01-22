@@ -1,3 +1,5 @@
+- [ ] Fix auto-open in classic mode
+- [ ] Screen titles
 - [ ] Open animation
 - [ ] requestAnimationFrame rendering
 - [ ] Sync settings
@@ -9,6 +11,7 @@
 - [ ] Try highlighting cells instead of outline
 - [ ] New id button
 - [ ] Reset progress button
+- [x] Move reload to settings
 - [x] Keep awake toggle
 - [x] Return from settings should not reset state
 - [ ] Pencils/drawing

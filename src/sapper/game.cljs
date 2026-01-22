@@ -172,7 +172,7 @@
 
     (set! buttons
       {:back     {:l  25           :t 25 :w 50 :h 50 :icon "btn_back.png"     :on-click #(reset! core/*screen [:level-select (:type puzzle)])}
-       :reload   {:l 100           :t 25 :w 50 :h 50 :icon "btn_reload.png"   :on-click core/reload}
+       :restart  {:l (- width 300) :t 25 :w 50 :h 50 :icon "btn_restart.png"  :on-click #(do (on-enter) (core/request-render))}
        :finish   {:l (- width 225) :t 25 :w 50 :h 50 :icon "btn_finish.png"   :on-click auto-finish! :disabled true}
        :random   {:l (- width 150) :t 25 :w 50 :h 50 :icon "btn_random.png"   :on-click #(core/load-random-puzzle (:type puzzle))}
        :settings {:l (- width  75) :t 25 :w 50 :h 50 :icon "btn_settings.png" :on-click #(reset! core/*screen [:settings])}})
@@ -769,7 +769,7 @@
    :on-pointer-up   on-pointer-up
    :on-pointer-move on-pointer-move
    :on-pointer-down on-pointer-down
-   :resources       #{"btn_finish.png"
+   :resources       #{"btn_restart.png" "btn_finish.png"
                       "0.png" "1.png" "2.png" "3.png" "4.png" "5.png" "6.png" "7.png" "8.png"
                       "0_solved.png" "1_solved.png" "2_solved.png" "3_solved.png" "4_solved.png" "5_solved.png" "6_solved.png" "7_solved.png" "8_solved.png"
                       "-1.png" "-2.png" "-3.png" "-4.png" "-5.png" "-6.png" "-7.png" "-8.png"

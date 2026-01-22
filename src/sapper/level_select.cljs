@@ -18,7 +18,6 @@
     (set! statuses (core/puzzle-statuses t))
     (set! buttons
       [{:l  25           :t 25 :w 50 :h 50 :icon "btn_back.png"     :on-click #(reset! core/*screen [:menu])}
-       {:l 100           :t 25 :w 50 :h 50 :icon "btn_reload.png"   :on-click core/reload}
        {:l (- width 150) :t 25 :w 50 :h 50 :icon "btn_random.png"   :on-click #(core/load-random-puzzle type)}
        {:l (- width  75) :t 25 :w 50 :h 50 :icon "btn_settings.png" :on-click #(reset! core/*screen [:settings])}])
     (core/sync-history t
