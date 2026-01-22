@@ -1,1 +1,1 @@
-../../../../node_modules/squint-cljs/src/squint/string.js
+../../../../../squint/src/squint/string.js

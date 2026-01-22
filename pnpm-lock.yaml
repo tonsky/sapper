@@ -8,16 +8,16 @@ importers:
 
   .:
     dependencies:
-      http-server:
-        specifier: ^14.1.1
-        version: 14.1.1
       squint-cljs:
-        specifier: link:/Users/tonsky/work/squint
-        version: link:../../work/squint
+        specifier: link:/Users/tonsky/ws/squint
+        version: link:../squint
     devDependencies:
       concurrently:
         specifier: ^9.2.1
         version: 9.2.1
+      http-server:
+        specifier: ^14.1.1
+        version: 14.1.1
 
 packages:
 

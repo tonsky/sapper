@@ -14,7 +14,7 @@
 
 (defn on-render []
   (when @*show-text?
-    (set! (.-font ctx) "bold 24px font")
+    (set! (.-font ctx) "bold 24px sans-serif")
     (set! (.-fillStyle ctx) "#FFF")
     (set! (.-textAlign ctx) "center")
     (set! (.-textBaseline ctx) "middle")

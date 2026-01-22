@@ -2,6 +2,7 @@
 - [ ] Controls on the left on iPad?
 - [ ] Migrate game.cljs drag-x/y to core/pointer-pos
 - [ ] Translate canvas so that safe area becomes 0, 0
+- [ ] Keep awake toggle
 - [ ] Pencils/drawing
   - [x] Basic drawing
   - [x] Erase with right mouse

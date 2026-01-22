@@ -142,7 +142,8 @@
 ;; Resources
 
 (defn-log load-resources [cb]
-  (let [resources (into
+  (let [t0        (js/Date.now)
+        resources (into
                     #{"btn_back.png" "btn_reload.png" "btn_random.png"
                       "CoFoSansSemi-Mono-Regular.woff2" "CoFoSansSemi-Mono-Bold.woff2"}
                     (mapcat :resources (vals screens)))
@@ -150,6 +151,7 @@
     (add-watch *pending ::cb
       (fn [_ _ _ v]
         (when (= 0 v)
+          (println "Loaded in" (- (js/Date.now) t0) "ms")
           (cb))))
     (doseq [name resources]
       (condp re-matches name
@@ -406,7 +408,7 @@
     (request-render)))
 
 (defn on-load []
-  (println "core/on-load")
+  (println "Loading...")
 
   (reset! *sync-id
     (or (js/localStorage.getItem "sapper/id")
@@ -518,6 +520,8 @@
           (let [[x y] (rel-coords e)]
             (call-screen-fn :on-pointer-up (merge @*start {:x x :y y :device device}))
             (reset! *device nil)))))
+
+    (call-screen-fn-impl [:loading] :on-enter)
 
     (let [navigate (fn [_e]
                      (let [hash   js/window.location.hash
