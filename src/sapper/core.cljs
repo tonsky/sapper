@@ -1,6 +1,7 @@
 (ns sapper.core
   (:require
-   [clojure.string :as str])
+   [clojure.string :as str]
+   [sapper.wake-lock :as wake-lock])
   (:require-macros
    [sapper.macros :refer [defn-log cond+]]))
 
@@ -274,7 +275,8 @@
         {:keys [l t w get-value set-value]} toggle
         {:keys [x y start-x start-y]} e]
     (when (both-inside? x y start-x start-y (+ left l) (+ top t) w 50)
-      (set-value (not (get-value))))))
+      (set-value (not (get-value)))
+      (request-render))))
 
 ;; STORAGE
 
@@ -460,6 +462,13 @@
     (fn [_ _ _ new]
       (js/localStorage.setItem "sapper/settings" (js/JSON.stringify new))))
 
+  (add-watch *settings ::change
+    (fn [_ _ old new]
+      (when (not= (boolean (:keep-awake old)) (boolean (:keep-awake new)))
+        (if (:keep-awake new)
+          (wake-lock/request)
+          (wake-lock/release)))))
+
   (set! canvas         (.querySelector js/document "#canvas"))
   (set! ctx            (.getContext canvas "2d"))
   (set! notes-canvas   (.querySelector js/document "#notes"))
@@ -518,7 +527,8 @@
   (add-event-listener js/document "visibilitychange"
     (fn [_]
       (when-not (.-hidden js/document)
-        (request-render))))
+        (request-render)
+        (wake-lock/maybe-restore (:keep-awake @*settings)))))
 
   (add-event-listener js/window "keydown" #(call-screen-fn :on-key-down %))
 
@@ -543,6 +553,7 @@
     (add-event-listener overlay-canvas "touchend"
       (fn [e]
         (.preventDefault e)
+        (wake-lock/maybe-restore (:keep-awake @*settings))
         (let [[x y] (rel-coords (aget (.-changedTouches e) 0))]
           (call-screen-fn :on-pointer-up (merge @*start {:x x :y y :device @*device}))
           (reset! *device nil))))
@@ -568,6 +579,7 @@
 
     (add-event-listener overlay-canvas "mouseup"
       (fn [e]
+        (wake-lock/maybe-restore (:keep-awake @*settings))
         (when-some [device @*device]
           (let [[x y] (rel-coords e)]
             (call-screen-fn :on-pointer-up (merge @*start {:x x :y y :device device}))

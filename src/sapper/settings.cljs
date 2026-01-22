@@ -5,6 +5,9 @@
 
 (def buttons)
 (def toggles)
+
+;; Sync ID
+
 (def sync-message)
 
 (defn show-message [m]
@@ -30,6 +33,8 @@
           (show-message "Pasted!"))
         (show-message "Invalid Sync ID")))))
 
+;; Screen logic
+
 (defn on-enter []
   (set! js/window.location.hash "settings")
   (let [[_ _ width _] core/safe-area]
@@ -47,14 +52,14 @@
       (into {}
         (for [[i [key text]] (core/indexed
                                (partition 2
-                                 [:expert "Expert mode"
-                                  :modern "Flags reduce counter"
-                                  :auto-open "Recursive auto-open"
-                                  :keep-awake "Keep device awake"]))]
+                                 [:keep-awake "Keep device awake"
+                                  :expert     "Expert mode"
+                                  :modern     "Flags reduce counter"
+                                  :auto-open  "Recursive auto-open"]))]
           [key {:l         200
                 :t         (+ 250 (* i 50))
                 :get-value #(get @core/*settings key)
-                :set-value #(do (swap! core/*settings assoc key %) (core/request-render))
+                :set-value #(swap! core/*settings assoc key %)
                 :text      text}])))))
 
 (defn on-render []

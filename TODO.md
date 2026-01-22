@@ -1,4 +1,3 @@
-- [ ] Keep awake toggle
 - [ ] Open animation
 - [ ] requestAnimationFrame rendering
 - [ ] Sync settings
@@ -10,6 +9,7 @@
 - [ ] Try highlighting cells instead of outline
 - [ ] New id button
 - [ ] Reset progress button
+- [x] Keep awake toggle
 - [x] Return from settings should not reset state
 - [ ] Pencils/drawing
   - [x] Basic drawing
