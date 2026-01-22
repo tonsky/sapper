@@ -9,8 +9,6 @@
 
 (def puzzle nil)
 
-(def modern true)
-(def auto-open-enabled false)
 (def cell-size 70)
 (def margin (-> sprite-size (- cell-size) (/ 2)))
 (def field {})
@@ -143,9 +141,9 @@
       (let [mines  (count (filter :mine nbs))
             flags  (count (filter :flagged nbs))
             label' (cond
-                     modern          (str (- mines flags))
-                     (> flags mines) (str "error_" mines)
-                     :else           (str mines))]
+                     (:modern @core/*settings) (str (- mines flags))
+                     (> flags mines)           (str "error_" mines)
+                     :else                     (str mines))]
         (assoc! cell :label label')))
     (assoc! cell :solved solved')
     (when (and
@@ -414,60 +412,70 @@
   (let [key                         (key gx gy)
         {:keys [mine open flagged]} (get-cell gx gy)]
     (cond+
-      open    :noop
-      flagged (do
-                (assoc! (get field key) :flagged false)
-                (update-field))
-      #_mine    #_(do
-                    (core/append-history (:id puzzle) :lose)
-                    (set! phase :game-over)
-                    (core/request-render))
-      :else   (do
-                #_(println (- (js/Date.now) t0) "open" gx gy)
+      open
+      :noop
 
-                (let [problem-with-flags {}
-                      _ (doseq [[key' {:keys [open flagged label]}] field]
-                          (assoc! problem-with-flags key'
-                            {:open    open
-                             :flagged (if (= key key')
-                                        true
-                                        flagged)
-                             :label   (cond
-                                        (not open)    nil
-                                        (= "q" label) "q"
-                                        flagged       nil
-                                        :else         (str (apply mine-count (parse-key key'))))}))
-                      problem-without-flags {}
-                      _ (doseq [[key' {:keys [open flagged label]}] field]
-                          (assoc! problem-without-flags key'
-                            {:open    open
-                             :flagged (= key key')
-                             :label   (cond
-                                        (not open)    nil
-                                        (= "q" label) "q"
-                                        flagged       nil
-                                        :else         (str (apply mine-count (parse-key key'))))}))
-                      cnt (count (filter :mine (vals field)))]
+      flagged
+      (do
+        (assoc! (get field key) :flagged false)
+        (update-field))
 
-                  (if-some [counterexample (or
-                                             (solver/solve field-w field-h cnt problem-with-flags)
-                                             (solver/solve field-w field-h cnt problem-without-flags))]
-                    (do
-                      #_(println "yes" counterexample)
-                      (doseq [[key cell] field]
-                        (assoc! cell :mine (get-in counterexample [key :mine] false)))
-                      #_(update-field)
-                      (core/append-history (:id puzzle) :lose)
-                      (set! exploded-x gx)
-                      (set! exploded-y gy)
-                      (set! phase :game-over)
-                      (core/request-render))
-                    (do
-                      #_(println "no" field)
-                      (assoc! (get field key) :open true)
-                      (update-field)
-                      (when auto-open-enabled
-                        (maybe-auto-open gx gy)))))))))
+      (not (:expert @core/*settings))
+      (if mine
+        (do
+          (core/append-history (:id puzzle) :lose)
+          (set! phase :game-over)
+          (core/request-render))
+        (do
+          (assoc! (get field key) :open true)
+          (update-field)
+          (when (:auto-open @core/*settings)
+            (maybe-auto-open gx gy))))
+
+      :else
+      (let [problem-with-flags {}
+            _ (doseq [[key' {:keys [open flagged label]}] field]
+                (assoc! problem-with-flags key'
+                  {:open    open
+                   :flagged (if (= key key')
+                              true
+                              flagged)
+                   :label   (cond
+                              (not open)    nil
+                              (= "q" label) "q"
+                              flagged       nil
+                              :else         (str (apply mine-count (parse-key key'))))}))
+            problem-without-flags {}
+            _ (doseq [[key' {:keys [open flagged label]}] field]
+                (assoc! problem-without-flags key'
+                  {:open    open
+                   :flagged (= key key')
+                   :label   (cond
+                              (not open)    nil
+                              (= "q" label) "q"
+                              flagged       nil
+                              :else         (str (apply mine-count (parse-key key'))))}))
+            cnt (count (filter :mine (vals field)))]
+
+        (if-some [counterexample (or
+                                   (solver/solve field-w field-h cnt problem-with-flags)
+                                   (solver/solve field-w field-h cnt problem-without-flags))]
+          (do
+            #_(println "yes" counterexample)
+            (doseq [[key cell] field]
+              (assoc! cell :mine (get-in counterexample [key :mine] false)))
+            #_(update-field)
+            (core/append-history (:id puzzle) :lose)
+            (set! exploded-x gx)
+            (set! exploded-y gy)
+            (set! phase :game-over)
+            (core/request-render))
+          (do
+            #_(println "no" field)
+            (assoc! (get field key) :open true)
+            (update-field)
+            (when (:auto-open @core/*settings)
+              (maybe-auto-open gx gy))))))))
 
 (defn flag-cell [gx gy]
   (when (= :new phase)
@@ -520,7 +528,7 @@
           (case op
             :open (open-cell nx ny)
             :flag (flag-cell nx ny))
-          (when auto-open-enabled
+          (when (:auto-open @core/*settings)
             (set! auto-open-queue (concat auto-open-queue all-new-nbs)))
           (set! auto-open-timer (core/set-timeout auto-open-dt auto-open)))
         (recur (next queue)))

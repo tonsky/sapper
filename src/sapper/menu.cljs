@@ -1,87 +1,36 @@
 (ns sapper.menu
   (:require
-   [clojure.string :as str]
-   [sapper.core :as core :refer [ctx canvas-w canvas-h]])
-  (:require-macros
-   [sapper.macros :refer [defn-log cond+]]))
+   [sapper.core :as core :refer [ctx canvas-w canvas-h]]))
 
 (def types)
 (def buttons)
-(def sync-message)
-
-(defn show-message [m]
-  (set! sync-message m)
-  (core/render)
-  (core/set-timeout 1000
-    (fn []
-      (when (= m sync-message)
-        (set! sync-message nil)
-        (core/request-render)))))
-
-(defn on-sync-id-copy [_e]
-  (.. js/navigator -clipboard (writeText @core/*sync-id))
-  (show-message "Copied!"))
-
-(defn on-sync-id-paste [_e]
-  (-> (.. js/navigator -clipboard (readText))
-    (.then
-      (fn [text]
-        (if (re-matches #"[a-z0-9]{13}" text)
-          (do
-            (js/localStorage.setItem "sapper/id" text)
-            (reset! core/*sync-id text)
-            (show-message "Pasted!"))
-          (show-message (str "Invalid: " text)))))))
 
 (defn on-enter []
   (set! js/window.location.hash "menu")
   (set! types (->> core/puzzles-by-type keys sort))
-  (set! buttons
-    [{:l  25 :t  25 :w 50 :h 50 :icon "btn_back.png"   :disabled true}
-     {:l 100 :t  25 :w 50 :h 50 :icon "btn_reload.png" :on-click core/reload}
-     {:l 375 :t 760 :w 80 :h 50 :text "Copy"           :on-click on-sync-id-copy}
-     {:l 475 :t 760 :w 80 :h 50 :text "Paste"          :on-click on-sync-id-paste}])
+  (let [[left top width height] core/safe-area]
+    (set! buttons
+      [{:l  25 :t  25 :w 50 :h 50 :icon "btn_back.png"   :disabled true}
+       {:l 100 :t  25 :w 50 :h 50 :icon "btn_reload.png" :on-click core/reload}
+       {:l (- width 75) :t 25 :w 50 :h 50 :icon "btn_settings.png" :on-click #(reset! core/*screen [:settings])}])
 
-  (let [[left top width height] core/safe-area
-        cols           4
-        rows           (-> (dec (count types)) (quot cols) inc)
-        btn-w          (-> width (- 50) (- (* 20 (dec cols))) (/ cols))
-        t              (-> height (- (* rows (+ 50 20))) (quot 2))]
-    (doseq [y (range rows)
-            x (range cols)
-            :let [i (+ (* y cols) x)]
-            :when (< i (count types))
-            :let [type (nth types i)]]
-      (conj! buttons {:l (+ 25 (* x (+ btn-w 20))) :t (+ t (* y 70)) :w btn-w :h 50
-                      :text type
-                      :on-click (fn [_]
-                                  (reset! core/*screen [:level-select type]))}))))
+    (let [cols           4
+          rows           (-> (dec (count types)) (quot cols) inc)
+          btn-w          (-> width (- 50) (- (* 20 (dec cols))) (/ cols))
+          t              (-> height (- (* rows (+ 50 20))) (quot 2))]
+      (doseq [y (range rows)
+              x (range cols)
+              :let [i (+ (* y cols) x)]
+              :when (< i (count types))
+              :let [type (nth types i)]]
+        (conj! buttons {:l (+ 25 (* x (+ btn-w 20))) :t (+ t (* y 70)) :w btn-w :h 50
+                        :text type
+                        :on-click (fn [_]
+                                    (reset! core/*screen [:level-select type]))})))))
 
 (defn on-render []
-  (let [[left top _ _] core/safe-area]
-    (doseq [b buttons]
-      (core/button-render b))
-
-    ;; Sync ID
-    (set! (.-font ctx) (str "16px " core/font-family))
-    (set! (.-textAlign ctx) "left")
-    (set! (.-textBaseline ctx) "middle")
-    (set! (.-fillStyle ctx) "#fff")
-    (.fillText ctx "Sync ID" (+ left 45) (+ top 760 25))
-
-    (set! (.-lineWidth ctx) 1)
-    (set! (.-strokeStyle ctx) "#2e4d6f")
-    (.beginPath ctx)
-    (.roundRect ctx (+ left 125) (+ top 760) 230 50 4)
-    (.stroke ctx)
-
-    (.save ctx)
-    (.beginPath ctx)
-    (.rect ctx (+ left 125) (+ top 760) 230 50)
-    (.clip ctx)
-    (set! (.-fillStyle ctx) (if (and sync-message (str/starts-with? sync-message "Invalid: ")) "#ff0000" "#fff"))
-    (.fillText ctx (or sync-message @core/*sync-id) (+ left 125 15) (+ top 760 25))
-    (.restore ctx)))
+  (doseq [b buttons]
+    (core/button-render b)))
 
 (defn on-pointer-move [e]
   (doseq [b buttons]
@@ -95,4 +44,5 @@
   {:on-enter        on-enter
    :on-render       on-render
    :on-pointer-move on-pointer-move
-   :on-pointer-up   on-pointer-up})
+   :on-pointer-up   on-pointer-up
+   :resources       #{"btn_settings.png"}})

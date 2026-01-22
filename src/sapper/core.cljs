@@ -24,6 +24,12 @@
 (def *sync-id (atom nil))
 (def pointer-pos [0 0])
 (def *last-puzzle-id (atom nil))
+(def *settings (atom nil))
+(def default-settings
+  {:expert     true
+   :modern     true
+   :auto-open  false
+   :keep-awake false})
 
 ;; RENDERING
 
@@ -145,6 +151,7 @@
   (let [t0        (js/Date.now)
         resources (into
                     #{"btn_back.png" "btn_reload.png" "btn_random.png"
+                      "toggle.png"
                       "CoFoSansSemi-Mono-Regular.woff2" "CoFoSansSemi-Mono-Bold.woff2"}
                     (mapcat :resources (vals screens)))
         *pending (atom (count resources))]
@@ -238,10 +245,35 @@
 
 (defn button-on-pointer-up [button e]
   (let [[left top _ _] safe-area
-        {:keys [l t w h text hover on-click disabled]} button
+        {:keys [l t w h on-click disabled]} button
         {:keys [x y start-x start-y]} e]
     (when (and (not disabled) (both-inside? x y start-x start-y (+ left l) (+ top t) w h) on-click)
       (on-click e))))
+
+;; TOGGLES
+
+(defn toggle-render [toggle]
+  (let [{:keys [l t get-value text]} toggle
+        [left top _ _] safe-area
+        value (get-value)]
+    (.drawImage ctx (get images "toggle.png")
+      0 (if value 0 200) 200 200
+      (+ left l -25) (+ top t -25) sprite-size sprite-size)
+
+    (set! (.-font ctx) "16px font")
+    (set! (.-textAlign ctx) "left")
+    (set! (.-textBaseline ctx) "middle")
+    (set! (.-fillStyle ctx) "#fff")
+    (.fillText ctx text (+ left l 50 15) (+ top t 25))
+
+    (set! (.-w toggle) (+ 50 15 (:width (.measureText ctx text))))))
+
+(defn toggle-on-pointer-up [toggle e]
+  (let [[left top _ _] safe-area
+        {:keys [l t w get-value set-value]} toggle
+        {:keys [x y start-x start-y]} e]
+    (when (both-inside? x y start-x start-y (+ left l) (+ top t) w 50)
+      (set-value (not (get-value))))))
 
 ;; STORAGE
 
@@ -415,6 +447,15 @@
       (let [id (gen-sync-id)]
         (js/localStorage.setItem "sapper/id" id)
         id)))
+
+  (reset! *settings
+    (merge
+      default-settings
+      (some-> (js/localStorage.getItem "sapper/settings") js/JSON.parse)))
+
+  (add-watch *settings ::store
+    (fn [_ _ _ new]
+      (js/localStorage.setItem "sapper/settings" (js/JSON.stringify new))))
 
   (set! canvas         (.querySelector js/document "#canvas"))
   (set! ctx            (.getContext canvas "2d"))
