@@ -35,21 +35,12 @@
 
 ;; RENDERING
 
-(declare maybe-render)
-
 (def *render-requested
   (atom false))
 
 (defn request-render []
-  (reset! *render-requested true))
-
-(defn set-timeout [dt f]
-  (js/setTimeout #(do (f) (maybe-render)) dt))
-
-(defn add-event-listener [el event f opts]
-  (.addEventListener el event
-    #(do (f %) (maybe-render))
-    opts))
+  (when (compare-and-set! *render-requested false true)
+    (js/window.requestAnimationFrame #(render))))
 
 (defn call-screen-fn-impl [screen-key name & args]
   (let [screen (get screens (first screen-key))]
@@ -81,10 +72,6 @@
   (.fillText ctx @*sync-id 13 35)
 
   (call-screen-fn-impl (or screen @*screen) :on-render))
-
-(defn maybe-render []
-  (when @*render-requested
-    (render)))
 
 ;; UTILS
 
@@ -142,6 +129,17 @@
             (if-not (empty? just-lost)
               (reset! *screen [:game (rand-nth just-lost)])
               (reset! *screen [:game (rand-nth puzzles)]))))))))
+
+(defn screen->hash [screen]
+  (str/join "/" screen))
+
+(defn hash->screen [hash]
+  (as-> hash %
+    (or % "")
+    (str/replace % #"^#" "")
+    (if (str/blank? %) nil %)
+    (or % "menu")
+    (str/split % #"/")))
 
 ;; Resources
 
@@ -440,6 +438,11 @@
     (.scale overlay-ctx canvas-scale canvas-scale)
     (request-render)))
 
+(defn on-navigate [_e]
+  (let [screen (hash->screen js/window.location.hash)]
+    (when (not= @*screen screen)
+      (reset! *screen screen))))
+
 (defn on-load []
   (println "Loading...")
 
@@ -496,7 +499,7 @@
       (.preventDefault e)))
 
   ;; Prevent context menu
-  (add-event-listener overlay-canvas "contextmenu"
+  (.addEventListener overlay-canvas "contextmenu"
     (fn [e]
       (.preventDefault e)))
 
@@ -515,22 +518,22 @@
             (call-screen-fn-impl new :on-enter))
           (render new)))))
 
-  (add-event-listener js/window "resize"
+  (.addEventListener js/window "resize"
     (fn [e]
       (on-resize e)
       (call-screen-fn :on-resize e)))
 
-  (add-event-listener js/document "visibilitychange"
+  (.addEventListener js/document "visibilitychange"
     (fn [_]
       (when-not (.-hidden js/document)
         (request-render)
         (wake-lock/maybe-restore (:keep-awake @*settings)))))
 
-  (add-event-listener js/window "keydown" #(call-screen-fn :on-key-down %))
+  (.addEventListener js/window "keydown" #(call-screen-fn :on-key-down %))
 
   (let [*start  (atom nil)
         *device (atom nil)]
-    (add-event-listener overlay-canvas "touchstart"
+    (.addEventListener overlay-canvas "touchstart"
       (fn [e]
         (.preventDefault e)
         (let [[x y] (rel-coords (aget (.-touches e) 0))]
@@ -539,14 +542,14 @@
           (reset! *device :touch)
           (call-screen-fn :on-pointer-down {:x x :y y :device @*device}))))
 
-    (add-event-listener overlay-canvas "touchmove"
+    (.addEventListener overlay-canvas "touchmove"
       (fn [e]
         (.preventDefault e)
         (let [[x y] (rel-coords (aget (.-touches e) 0))]
           (set! pointer-pos [x y])
           (call-screen-fn :on-pointer-move (merge @*start {:x x :y y :device @*device})))))
 
-    (add-event-listener overlay-canvas "touchend"
+    (.addEventListener overlay-canvas "touchend"
       (fn [e]
         (.preventDefault e)
         (wake-lock/maybe-restore (:keep-awake @*settings))
@@ -554,7 +557,7 @@
           (call-screen-fn :on-pointer-up (merge @*start {:x x :y y :device @*device}))
           (reset! *device nil))))
 
-    (add-event-listener overlay-canvas "mousedown"
+    (.addEventListener overlay-canvas "mousedown"
       (fn [e]
         (when-some [device (case (.-button e)
                              0 :mouse-left
@@ -566,14 +569,14 @@
             (reset! *device device)
             (call-screen-fn :on-pointer-down {:x x :y y :device @*device})))))
 
-    (add-event-listener overlay-canvas "mousemove"
+    (.addEventListener overlay-canvas "mousemove"
       (fn [e]
         (when-some [device (or @*device :mouse-hover)]
           (let [[x y] (rel-coords e)]
             (set! pointer-pos [x y])
             (call-screen-fn :on-pointer-move (merge @*start {:x x :y y :device device}))))))
 
-    (add-event-listener overlay-canvas "mouseup"
+    (.addEventListener overlay-canvas "mouseup"
       (fn [e]
         (wake-lock/maybe-restore (:keep-awake @*settings))
         (when-some [device @*device]
@@ -583,13 +586,8 @@
 
     (call-screen-fn-impl [:loading] :on-enter)
 
-    (let [navigate (fn [_e]
-                     (let [hash   js/window.location.hash
-                           hash   (if (str/blank? hash) nil (subs hash 1))
-                           screen (str/split (or hash "menu") #"/")]
-                       (when (not= @*screen screen)
-                         (reset! *screen screen))))]
-      (add-event-listener js/window "hashchange" navigate)
-      (load-resources navigate))))
+    (.addEventListener js/window "hashchange" on-navigate)
 
-(add-event-listener js/window "load" on-load)
+    (load-resources on-navigate)))
+
+(.addEventListener js/window "load" on-load)

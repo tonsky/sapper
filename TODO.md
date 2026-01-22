@@ -1,6 +1,5 @@
 - [ ] Screen titles
 - [ ] Open animation
-- [ ] requestAnimationFrame rendering
 - [ ] Sync settings
 - [ ] Store last level state and notes
 - [ ] Unopened cells count as a number
@@ -10,6 +9,7 @@
 - [ ] Try highlighting cells instead of outline
 - [ ] New id button
 - [ ] Reset progress button
+- [x] requestAnimationFrame rendering
 - [x] Fix auto-open in classic mode
 - [x] Move reload to settings
 - [x] Keep awake toggle

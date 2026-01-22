@@ -7,10 +7,11 @@
 
 (defn on-enter []
   (reset! *show-text? false)
-  (core/set-timeout 500
+  (js/setTimeout
     #(do
        (reset! *show-text? true)
-       (core/request-render))))
+       (core/request-render))
+    500))
 
 (defn on-render []
   (when @*show-text?

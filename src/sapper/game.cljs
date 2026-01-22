@@ -49,7 +49,7 @@
 (def auto-open-timer nil)
 (def auto-open-dt 32.333333)
 
-(declare open-cell flag-cell maybe-auto-open auto-finish)
+(declare open-cell flag-cell maybe-auto-open auto-finish on-enter)
 
 (defn neighbours [x y]
   (concat
@@ -161,6 +161,10 @@
     (set! phase :victory))
   (core/request-render))
 
+(defn restart []
+  (on-enter)
+  (core/request-render))
+
 (defn-log on-enter []
   (let [[_ id]           @core/*screen
         _                (set! js/window.location.hash (str "game/" id))
@@ -172,7 +176,7 @@
 
     (set! buttons
       {:back     {:l  25           :t 25 :w 50 :h 50 :icon "btn_back.png"     :on-click #(reset! core/*screen [:level-select (:type puzzle)])}
-       :restart  {:l (- width 300) :t 25 :w 50 :h 50 :icon "btn_restart.png"  :on-click #(do (on-enter) (core/request-render))}
+       :restart  {:l (- width 300) :t 25 :w 50 :h 50 :icon "btn_restart.png"  :on-click restart}
        :finish   {:l (- width 225) :t 25 :w 50 :h 50 :icon "btn_finish.png"   :on-click auto-finish :disabled true}
        :random   {:l (- width 150) :t 25 :w 50 :h 50 :icon "btn_random.png"   :on-click #(core/load-random-puzzle (:type puzzle))}
        :settings {:l (- width  75) :t 25 :w 50 :h 50 :icon "btn_settings.png" :on-click #(reset! core/*screen [:settings])}})
@@ -211,8 +215,7 @@
     (set! drag-device nil)
     (set! tool nil)
     (set! notes [])
-    (set! anim-start (js/Date.now))
-    (js/requestAnimationFrame #(core/render))))
+    (set! anim-start (js/Date.now))))
 
 (defn on-render []
   (let [anim-progress     (core/clamp (/ (- (js/Date.now) anim-start) anim-length) 0 1)
@@ -500,10 +503,11 @@
     (let [unprocessed (shuffle (remove #(processed (second %)) field))]
       (doseq [[i [k cell]] (core/indexed unprocessed)
               :let [[gx gy] (parse-key k)]]
-        (core/set-timeout (* auto-open-dt i)
+        (js/setTimeout
           (case action
             :open-all #(open-cell gx gy)
-            :flag-all #(flag-cell gx gy)))))))
+            :flag-all #(flag-cell gx gy))
+          (* auto-open-dt i))))))
 
 (defn can-auto-open [gx gy]
   (let [cell (get-cell gx gy)]
@@ -533,7 +537,7 @@
             :flag (flag-cell nx ny))
           (when (:auto-open @core/*settings)
             (set! auto-open-queue (concat auto-open-queue all-new-nbs)))
-          (set! auto-open-timer (core/set-timeout auto-open-dt auto-open)))
+          (set! auto-open-timer (js/setTimeout auto-open auto-open-dt)))
         (recur (next queue)))
       (do
         (set! auto-open-queue [])
@@ -541,7 +545,7 @@
 
 (defn request-auto-open [cells]
   (when-not auto-open-timer
-    (set! auto-open-timer (core/set-timeout auto-open-dt auto-open))))
+    (set! auto-open-timer (js/setTimeout auto-open auto-open-dt))))
 
 (defn maybe-auto-open [gx gy]
   (when (can-auto-open gx gy)
@@ -608,7 +612,7 @@
       (on-tool-click :clear)
 
       (= "r" key)
-      (core/reload)
+      (restart)
 
       (= "Escape" key)
       (do

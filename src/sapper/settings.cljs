@@ -13,11 +13,11 @@
 (defn show-message [m]
   (set! sync-message m)
   (core/render)
-  (core/set-timeout 1000
-    (fn []
-      (when (= m sync-message)
-        (set! sync-message nil)
-        (core/request-render)))))
+  (js/setTimeout
+    #(when (= m sync-message)
+       (set! sync-message nil)
+       (core/request-render))
+    1000))
 
 (defn on-sync-id-copy [_e]
   (.. js/navigator -clipboard (writeText @core/*sync-id))
