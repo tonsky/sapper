@@ -5,25 +5,37 @@
    [sapper.level-select :as level-select]
    [sapper.solver :as solver])
   (:require-macros
-   [sapper.macros :refer [defn-log cond+]]))
+   [sapper.macros :refer [cond+]]))
+
+(defclass Field
+  (field -map (js/Map.))
+  (field width)
+  (field height)
+  (constructor [this w h]
+    (set! width w)
+    (set! height h))
+
+  Object
+  (get       [_ key def]   (or (.get -map (js/JSON.stringify key)) def))
+  (set       [_ key value] (.set -map (js/JSON.stringify key) value))
+  (keys      [_]           (map js/JSON.parse (.keys -map)))
+  (vals      [_]           (.values -map))
+  (contains? [_ key]       (.has -map (js/JSON.stringify key)))
+  (seq       [_]           (map (fn [[k v]] [(js/JSON.parse k) v]) (.entries -map))))
 
 (def puzzle nil)
 
 (def cell-size 70)
 (def margin (-> sprite-size (- cell-size) (/ 2)))
-(def field {})
+(def field)
 (def flags 0)
-(def field-w 0)
-(def field-h 0)
 (def grid-x 0)
 (def grid-y 0)
 (def grid-w 0)
 (def grid-h 0)
-(def outline-x nil)
-(def outline-y nil)
+(def outline-pos nil)
 (def phase)
-(def exploded-x nil)
-(def exploded-y nil)
+(def exploded-pos nil)
 (def buttons)
 (def dragging-flag false)
 (def tool nil)
@@ -41,45 +53,41 @@
 
 (def auto-open-queue [])
 (def auto-open-timer nil)
-(def auto-open-dt 32.333333)
+(def auto-open-dt 50)
 
 (declare open-cell flag-cell maybe-auto-open auto-finish on-enter)
 
-(defn neighbours [x y]
-  (concat
-    (when (and (> x 0) (> y 0))
-      [[(dec x) (dec y)]])
-    (when (> x 0)
-      [[(dec x)      y ]])
-    (when (and (> x 0) (< y (dec field-h)))
-      [[(dec x) (inc y)]])
-    (when (> y 0)
-      [[     x  (dec y)]])
-    (when (< y (dec field-h))
-      [[     x  (inc y)]])
-    (when (and (< x (dec field-w)) (> y 0))
-      [[(inc x) (dec y)]])
-    (when (< x (dec field-w))
-      [[(inc x)      y ]])
-    (when (and (< x (dec field-w)) (< y (dec field-h)))
-      [[(inc x) (inc y)]])))
+(defn neighbours [[x y]]
+  (let [max-x (dec (.-width field))
+        max-y (dec (.-height field))]
+    (concat
+      (when (and (> x 0) (> y 0))
+        [[(dec x) (dec y)]])
+      (when (> x 0)
+        [[(dec x)      y ]])
+      (when (and (> x 0) (< y max-y))
+        [[(dec x) (inc y)]])
+      (when (> y 0)
+        [[     x  (dec y)]])
+      (when (< y max-y)
+        [[     x  (inc y)]])
+      (when (and (< x max-x) (> y 0))
+        [[(inc x) (dec y)]])
+      (when (< x max-x)
+        [[(inc x)      y ]])
+      (when (and (< x max-x) (< y max-y))
+        [[(inc x) (inc y)]]))))
 
-(defn mine-count [x y]
-  (->> (neighbours x y)
-    (filter (fn [[x y]] (:mine (get-cell x y))))
+(defn get-cell [pos]
+  (when pos
+    (.get field pos)))
+
+(defn mine-count [pos]
+  (->> (neighbours pos)
+    (filter #(:mine (get-cell %)))
     (count)))
 
-(defn key [x y]
-  (str x "," y))
-
-(defn parse-key [key]
-  (let [[x y] (str/split key ",")]
-    [(js/Number x) (js/Number y)]))
-
-(defn get-cell [x y]
-  (get field (key x y)))
-
-(defn field-coords [x y]
+(defn coord->pos [[x y]]
   (when (core/inside? x y grid-x grid-y grid-w grid-h)
     [(quot (- x grid-x) cell-size)
      (quot (- y grid-y) cell-size)]))
@@ -112,7 +120,7 @@
 
 (defn can-auto-finish? []
   (when (#{:new :play} phase)
-    (let [unprocessed (->> field vals (remove processed) count)]
+    (let [unprocessed (->> field .vals (remove processed) count)]
       (when (pos? unprocessed)
         (cond
           (= flags 0)           :open-all
@@ -123,13 +131,10 @@
     (.pop notes)
     (core/request-render)))
 
-(defn-log update-field []
-  (doseq [[key cell] field
-          :let [[x y] (parse-key key)
-                {:keys [mine label solved]} cell
-                nbs   (map
-                        (fn [[x y]] (get-cell x y))
-                        (neighbours x y))
+(defn update-field []
+  (doseq [[pos cell] (.seq field)
+          :let [{:keys [mine label solved]} cell
+                nbs     (mapv get-cell (neighbours pos))
                 solved' (every? processed nbs)]]
     (when (and (not= "q" label) (not mine))
       (let [mines  (count (filter :mine nbs))
@@ -143,14 +148,12 @@
     (when (and
             (not solved)
             solved'
-            (= outline-x x)
-            (= outline-y y))
-      (set! outline-x nil)
-      (set! outline-y nil)))
-  (set! flags (- (->> field vals (filter :mine) count)
-                (->> field vals (filter :flagged) (count))))
+            (= outline-pos pos))
+      (set! outline-pos nil)))
+  (set! flags (- (->> field .vals (filter :mine) count)
+                (->> field .vals (filter :flagged) (count))))
   (assoc! (:finish buttons) :disabled (not (can-auto-finish?)))
-  (when (->> field vals (every? processed))
+  (when (->> field .vals (every? processed))
     (core/append-history (:id puzzle) :win)
     (set! phase :victory))
   (core/request-render))
@@ -159,11 +162,10 @@
   (on-enter @core/*screen)
   (core/request-render))
 
-(defn-log on-enter [[_ id]]
+(defn on-enter [[_ id]]
   (let [_         (set! puzzle (get core/puzzles-by-id id))
         code      (:code puzzle)
-        [_ fw fh] (re-find #"(\d+)x(\d+)" id)
-        len       (count code)]
+        [_ fw fh] (re-find #"(\d+)x(\d+)" id)]
 
     (set! buttons
       {:back     {:l  10            :t 10 :w 50 :h 50 :icon "btn_back.png"     :on-click #(core/navigate [:level-select (:type puzzle)])}
@@ -173,18 +175,16 @@
        :finish   {:l (- safe-w  60) :t 70 :w 50 :h 50 :icon "btn_finish.png"   :on-click auto-finish :disabled true}})
 
     (set! phase :init)
-    (set! field-w (parse-long fw))
-    (set! field-h (parse-long fh))
-    (set! grid-w (* field-w cell-size))
-    (set! grid-h (* field-h cell-size))
-    (on-resize)
-    (set! field {})
+    (set! field (Field. (parse-long fw) (parse-long fh)))
+    (set! grid-w (* (.-width field) cell-size))
+    (set! grid-h (* (.-height field) cell-size))
+    (set! grid-x (-> safe-w (- grid-w) (quot 2)))
+    (set! grid-y (-> safe-h (- 100) (- grid-h) (quot 2)))
 
-    (dotimes [i (* field-w field-h)]
-      (let [x  (mod i field-w)
-            y  (quot i field-w)
-            ch (nth code i)]
-        (assoc! field (key x y)
+    (doseq [[i ch] (core/indexed code)]
+      (let [x (mod i (.-width field))
+            y (quot i (.-width field))]
+        (.set field [x y]
           (case ch
             "f" {:mine true,  :open false}
             "F" {:mine true,  :open true}
@@ -194,10 +194,8 @@
             "Q" {:mine false, :open true,  :label "q"}))))
 
     (update-field)
-    (set! outline-x nil)
-    (set! outline-y nil)
-    (set! exploded-x nil)
-    (set! exploded-y nil)
+    (set! outline-pos nil)
+    (set! exploded-pos nil)
     (set! phase :new)
     (set! dragging-flag false)
     (set! tool nil)
@@ -205,11 +203,14 @@
     (set! anim-start (js/Date.now))))
 
 (defn on-render []
-  (let [anim-progress     (core/clamp (/ (- (js/Date.now) anim-start) anim-length) 0 1)
-        [hover-x hover-y] (when dragging-flag
-                            (field-coords core/pointer-x core/pointer-y))
-        id                (:id puzzle)
-        rng               (core/make-rng (js/parseInt (str/join (re-seq #"\d" id))))]
+  (let [anim-progress (core/clamp (/ (- (js/Date.now) anim-start) anim-length) 0 1)
+        hover-pos     (when dragging-flag
+                        (coord->pos [core/pointer-x core/pointer-y]))
+        id            (:id puzzle)
+        rng           (core/make-rng (js/parseInt (str/join (re-seq #"\d" id))))
+        cell-coord    (fn [[x y]]
+                        [(+ (* x cell-size) (+ grid-x) (- margin))
+                         (+ (* y cell-size) (+ grid-y) (- margin))])]
     ;; Title
     (set! (.-font ctx) "bold 24px font")
     (set! (.-textAlign ctx) "center")
@@ -222,14 +223,16 @@
       (core/button-render b))
 
     ;; cells
-    (doseq [y (range field-w)
-            x (range field-h)]
-      (let [_              (core/advance-rng rng)
-            {:keys [mine flagged open label solved] :as cell} (get-cell x y)
-            err            (and label (or (str/starts-with? label "-")
+    (doseq [y (range (.-height field))
+            x (range (.-width field))]
+      (core/advance-rng rng)
+      (let [pos            [x y]
+            {:keys [mine flagged open label solved] :as cell} (get-cell pos)
+            err            (and label (or
+                                        (str/starts-with? label "-")
                                         (str/starts-with? label "error_")))
             name           (cond
-                             (and (= :game-over phase) (= x exploded-x) (= y exploded-y))
+                             (and (= :game-over phase) (= pos exploded-pos))
                              nil
 
                              (and (= :game-over phase) mine (not flagged))
@@ -238,7 +241,7 @@
                              (and (= :game-over phase) (not mine) flagged)
                              "flagged_wrong.png"
 
-                             (and dragging-flag (not open) (not flagged) (= x hover-x) (= y hover-y))
+                             (and dragging-flag (not open) (not flagged) (= pos hover-pos))
                              "hover.png"
 
                              flagged
@@ -256,33 +259,32 @@
                              :else
                              (str label ".png"))
             img            (get images name)
-            anim-stagger   (-> (+ (* y field-w) x) (/ field-w field-h))
+            anim-stagger   (-> (+ (* y (.-width field)) x) (/ (.-width field) (.-height field)))
             anim-progress' (-> anim-progress (- (* anim-stagger 0.75)) (* 4) (core/clamp 0 1))
-            anim-travel    (/ (core/dist [0 0] [x y]) (core/dist [0 0] [field-w field-h]))
+            anim-travel    (/ (core/dist [0 0] pos) (core/dist [0 0] [(.-width field) (.-height field)]))
             anim-offset-x  (* (- 1 anim-progress') (* anim-travel 30))
             anim-offset-y  (* (- 1 anim-progress') (* anim-travel 50))
-            px             (-> (* x cell-size) (+ grid-x) (- margin) (+ anim-offset-x))
-            py             (-> (* y cell-size) (+ grid-y) (- margin) (+ anim-offset-y))]
+            [px py]        (cell-coord pos)]
         (when name
           (set! (.-globalAlpha ctx) anim-progress')
-          (.drawImage ctx img px py sprite-size sprite-size))))
+          (.drawImage ctx img (+ px anim-offset-x) (+ py anim-offset-y) sprite-size sprite-size))))
     (set! (.-globalAlpha ctx) 1)
 
     ;; explosion
-    (when (and (= :game-over phase) exploded-x exploded-y)
-      (let [img (get images "explosion.png")
-            px  (-> (* exploded-x cell-size) (+ grid-x) (- margin))
-            py  (-> (* exploded-y cell-size) (+ grid-y) (- margin))]
+    (when exploded-pos
+      (let [[px py] (cell-coord exploded-pos)
+            img     (get images "explosion.png")]
         (.drawImage ctx img px py sprite-size sprite-size)))
 
     ;; outline
-    (when (and outline-x outline-y)
-      (let [left    (max 0 (dec outline-x))
-            top     (max 0 (dec outline-y))
-            right   (min (dec field-w) (inc outline-x))
-            bottom  (min (dec field-h) (inc outline-y))
+    (when outline-pos
+      (let [[x y]   outline-pos
+            left    (max 0 (dec x))
+            top     (max 0 (dec y))
+            right   (min (dec (.-width field)) (inc x))
+            bottom  (min (dec (.-height field)) (inc y))
             padding 4
-            {:keys [label mine solved]}(get-cell outline-x outline-y)
+            {:keys [label mine solved]} (get-cell outline-pos)
             color   (cond
                       mine          "#E15757"
                       solved        "#73A2C9"
@@ -410,121 +412,119 @@
     (when (< anim-progress 1)
       (core/request-render))))
 
-(defn field-comparator [[key value]]
-  (let [[x y] (parse-key key)]
-    (str y "," x)))
-
-(defn open-cell [gx gy]
+(defn open-cell [pos]
   (when (= :new phase)
     (set! phase :play)
     (core/append-history (:id puzzle) :start))
-  (let [key                         (key gx gy)
-        {:keys [mine open flagged]} (get-cell gx gy)]
+  (let [cell (get-cell pos)
+        {:keys [mine open flagged]} cell
+        expert? (:expert @core/*settings)]
     (cond+
       open
       :noop
 
       flagged
       (do
-        (assoc! (get field key) :flagged false)
+        (assoc! cell :flagged false)
         (update-field))
 
-      (not (:expert @core/*settings))
-      (if mine
-        (do
-          (core/append-history (:id puzzle) :lose)
-          (set! phase :game-over)
-          (core/request-render))
-        (do
-          (assoc! (get field key) :open true)
-          (update-field)
-          (when (:auto-open @core/*settings)
-            (maybe-auto-open gx gy))))
+      (and (not expert?) mine)
+      (do
+        (core/append-history (:id puzzle) :lose)
+        (set! phase :game-over)
+        (core/request-render))
+
+      (not expert?)
+      (do
+        (assoc! cell :open true)
+        (update-field)
+        (when (:auto-open @core/*settings)
+          (maybe-auto-open pos)))
 
       :else
       (let [problem-with-flags {}
-            _ (doseq [[key' {:keys [open flagged label]}] field]
-                (assoc! problem-with-flags key'
+            _ (doseq [[pos' {:keys [open flagged label]}] (.seq field)]
+                (assoc! problem-with-flags (str/join "," pos')
                   {:open    open
-                   :flagged (if (= key key')
+                   :flagged (if (= pos pos')
                               true
                               flagged)
                    :label   (cond
                               (not open)    nil
                               (= "q" label) "q"
                               flagged       nil
-                              :else         (str (apply mine-count (parse-key key'))))}))
+                              :else         (str (mine-count pos')))}))
             problem-without-flags {}
-            _ (doseq [[key' {:keys [open flagged label]}] field]
-                (assoc! problem-without-flags key'
+            _ (doseq [[pos' {:keys [open flagged label]}] (.seq field)]
+                (assoc! problem-without-flags (str/join "," pos')
                   {:open    open
-                   :flagged (= key key')
+                   :flagged (= pos pos')
                    :label   (cond
                               (not open)    nil
                               (= "q" label) "q"
                               flagged       nil
-                              :else         (str (apply mine-count (parse-key key'))))}))
-            cnt (count (filter :mine (vals field)))]
+                              :else         (str (mine-count pos')))}))
+            cnt (count (filter :mine (.vals field)))]
 
         (if-some [counterexample (or
-                                   (solver/solve field-w field-h cnt problem-with-flags)
-                                   (solver/solve field-w field-h cnt problem-without-flags))]
+                                   (solver/solve (.-width field) (.-height field) cnt problem-with-flags)
+                                   (solver/solve (.-width field) (.-height field) cnt problem-without-flags))]
           (do
             #_(println "yes" counterexample)
-            (doseq [[key cell] field]
-              (assoc! cell :mine (get-in counterexample [key :mine] false)))
+            (doseq [[pos cell] (.seq field)]
+              (assoc! cell :mine (get-in counterexample [(str/join "," pos) :mine] false)))
             #_(update-field)
             (core/append-history (:id puzzle) :lose)
-            (set! exploded-x gx)
-            (set! exploded-y gy)
+            (set! exploded-pos pos)
             (set! phase :game-over)
             (core/request-render))
           (do
             #_(println "no" field)
-            (assoc! (get field key) :open true)
+            (assoc! (.get field pos) :open true)
             (update-field)
             (when (:auto-open @core/*settings)
-              (maybe-auto-open gx gy))))))))
+              (maybe-auto-open pos))))))))
 
-(defn flag-cell [gx gy]
+(defn flag-cell [pos]
   (when (= :new phase)
     (set! phase :play)
     (core/append-history (:id puzzle) :start))
-  (let [key                    (key gx gy)
-        {:keys [flagged open]} (get-cell gx gy)]
+  (let [cell (get-cell pos)
+        {:keys [flagged open]} cell]
     (cond
       open         :noop
       flagged      (do
-                     (assoc! (get field key) :flagged false)
+                     (assoc! cell :flagged false)
                      (update-field))
       (<= flags 0) :noop
       :else        (do
                      #_(println (- (js/Date.now) t0) "flag" gx gy)
-                     (assoc! (get field key) :flagged true)
+                     (assoc! cell :flagged true)
                      (update-field)))))
 
 (defn auto-finish []
   (when-some [action (can-auto-finish?)]
-    (let [unprocessed (shuffle (remove #(processed (second %)) field))]
-      (doseq [[i [k cell]] (core/indexed unprocessed)
-              :let [[gx gy] (parse-key k)]]
+    (let [unprocessed (->> (.keys field)
+                        (remove #(processed (get-cell %)))
+                        (shuffle))]
+      (doseq [[i pos] (core/indexed unprocessed)]
         (js/setTimeout
           (case action
-            :open-all #(open-cell gx gy)
-            :flag-all #(flag-cell gx gy))
+            :open-all #(open-cell pos)
+            :flag-all #(flag-cell pos))
           (* auto-open-dt i))))))
 
-(defn can-auto-open [gx gy]
-  (let [cell (get-cell gx gy)]
+(defn can-auto-open [pos]
+  (let [cell (get-cell pos)]
     (when (and
             (:open cell)
             (not= "q" (:label cell)))
-      (let [nbs         (neighbours gx gy)
+      (let [nbs         (neighbours pos)
             unprocessed (->> nbs
-                          (remove (fn [[x y]] (processed (get-cell x y))))
+                          (remove #(processed (get-cell %)))
                           vec)
-            mines       (filterv (fn [[x y]] (:mine (get-cell x y))) nbs)
-            flags       (filterv (fn [[x y]] (:flagged (get-cell x y))) nbs)]
+            mines       (filterv #(:mine (get-cell %)) nbs)
+            flags       (filterv #(:flagged (get-cell %)) nbs)]
         (cond
           (= 0 (count unprocessed))                               nil
           (= (+ (count flags) (count unprocessed)) (count mines)) [:flag unprocessed]
@@ -532,14 +532,14 @@
 
 (defn auto-open []
   (loop [queue auto-open-queue]
-    (if-some [[x y] (first queue)]
-      (if-some [[op nbs] (can-auto-open x y)]
-        (let [[[nx ny] & _] nbs
-              old-set       (set (map key auto-open-queue))
-              all-new-nbs   (remove #(contains? old-set (key %)) (neighbours nx ny))]
+    (if-some [pos (first queue)]
+      (if-some [[op nbs] (can-auto-open pos)]
+        (let [[npos & _] nbs
+              old-set       (set (map js/JSON.stringify auto-open-queue))
+              all-new-nbs   (remove #(contains? old-set (js/JSON.stringify %)) (neighbours npos))]
           (case op
-            :open (open-cell nx ny)
-            :flag (flag-cell nx ny))
+            :open (open-cell npos)
+            :flag (flag-cell npos))
           (when (:auto-open @core/*settings)
             (set! auto-open-queue (concat auto-open-queue all-new-nbs)))
           (set! auto-open-timer (js/setTimeout auto-open auto-open-dt)))
@@ -552,9 +552,9 @@
   (when-not auto-open-timer
     (set! auto-open-timer (js/setTimeout auto-open auto-open-dt))))
 
-(defn maybe-auto-open [gx gy]
-  (when (can-auto-open gx gy)
-    (set! auto-open-queue (conj auto-open-queue [gx gy]))
+(defn maybe-auto-open [pos]
+  (when (can-auto-open pos)
+    (set! auto-open-queue (conj auto-open-queue pos))
     (request-auto-open)
     true))
 
@@ -575,11 +575,6 @@
         (set! tool nil)
         (set! tool tool'))
       (core/request-render))))
-
-(defn on-resize []
-  (set! grid-x (-> safe-w (- grid-w) (quot 2)))
-  (set! grid-y (-> safe-h (- 100) (- grid-h) (quot 2)))
-  (core/request-render))
 
 (defn on-key-down [e]
   (let [key (.-key e)
@@ -633,18 +628,19 @@
       (conj! notes {:tool tool' :points []})
       (core/request-render))
 
-    :let [[gx gy] (field-coords x y)]
+    :let [pos  (coord->pos [x y])
+          cell (get-cell pos)]
 
     ;; drag flag from cell
     (and
       (#{:new :play} phase)
       (#{:mouse-left :touch} device)
-      gx gy
-      (:flagged (get-cell gx gy)))
+      pos
+      (:flagged cell))
     (do
       (set! dragging-flag true)
       (set! tool nil)
-      (assoc! (get field (key gx gy)) :flagged false)
+      (assoc! cell :flagged false)
       (update-field))
 
     ;; drag flag from flag area
@@ -692,7 +688,8 @@
             (< (core/dist (nth points 0) (nth points 1)) 5)))
         (.pop notes))))
 
-  (let [[gx gy]   (field-coords x y)
+  (let [pos       (coord->pos [x y])
+        cell      (get-cell pos)
         toolbox-w (* (count tools) tool-size)
         toolbox-x (quot (- safe-w toolbox-w) 2)
         toolbox-y (- safe-h 25 tool-size)
@@ -701,10 +698,8 @@
       ;; drop flag
       dragging-flag
       (do
-        (when-some [[gx gy] (field-coords x y)]
-          (let [{:keys [open flagged]} (get-cell gx gy)]
-            (when (and (not open) (not flagged))
-              (flag-cell gx gy))))
+        (when (and cell (not (:open cell)) (not (:flagged cell)))
+          (flag-cell pos))
         (set! dragging-flag false)
         (core/request-render))
 
@@ -722,42 +717,37 @@
       :noop
 
       ;; end outside field
-      (not (and gx gy))
+      (not pos)
       (do
-        (set! outline-x nil)
-        (set! outline-y nil)
+        (set! outline-pos nil)
         (core/request-render))
 
       ;; auto-open neighbors if label matches unopened count
-      (maybe-auto-open gx gy)
+      (maybe-auto-open pos)
       :noop
 
       ;; second click on outlined cell
-      (and (= gx outline-x) (= gy outline-y))
+      (= outline-pos pos)
       (do
-        (set! outline-x nil)
-        (set! outline-y nil)
+        (set! outline-pos nil)
         (core/request-render))
 
       ;; click on open cell
-      :let [cell (when (and gx gy) (get-cell gx gy))]
-
       (:open cell)
       (do
-        (set! outline-x gx)
-        (set! outline-y gy)
+        (set! outline-pos pos)
         (core/request-render))
 
       ;; click on closed cell
-      :else
-      (case device
-        (:mouse-left :touch) (open-cell gx gy)
-        :mouse-right         (flag-cell gx gy)))))
+      (#{:mouse-left :touch} device)
+      (open-cell pos)
+
+      (#{:mouse-right} device)
+      (flag-cell pos))))
 
 (assoc! core/screens :game
   {:on-enter        on-enter
    :on-reenter      update-field
-   :on-resize       on-resize
    :on-render       on-render
    :on-key-down     on-key-down
    :on-pointer-up   on-pointer-up

@@ -1,4 +1,5 @@
-- [ ] Use data structure to store field
+- [ ] Abstract away canvas operations
+- [ ] Shuffle auto-open
 - [ ] Pre-calc mines and flags
 - [ ] Open animation
 - [ ] Sync settings
@@ -9,7 +10,8 @@
 - [ ] New id button
 - [ ] Reset progress button
 - [ ] Show progress on main screen
-- [x] Migrate game.cljs drag-x/y to core/pointer-pos
+- [x] Use class to store field
+- [x] Migrate game.cljs drag-x/y to core/pointer-xy
 - [x] Live reload server
 - [x] Translate canvas so that safe area becomes 0, 0
 - [x] Screen titles
