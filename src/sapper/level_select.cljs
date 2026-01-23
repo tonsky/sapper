@@ -40,7 +40,7 @@
         img     (get core/images "level_select.png")
         rng     (core/make-rng (js/parseInt (subs type 3 4)))]
     (doseq [[i puzzle] (core/indexed puzzles)
-            :let [_            (core/advance-rng rng)
+            :let [random       (core/advance-rng rng)
                   x            (mod i 18)
                   y            (quot i 18)
                   hover?       (= hover-idx i)
@@ -56,7 +56,7 @@
                                  :else                               0)
                   sprite-top   (if (= @core/*last-puzzle-id id)
                                  500
-                                 (-> (core/random rng) (* 5) js/Math.floor (* 100)))]]
+                                 (-> random (* 5) js/Math.floor (* 100)))]]
       (when (< (+ (* y 18) x) (count puzzles))
         (.drawImage ctx img
           sprite-left sprite-top 100 100

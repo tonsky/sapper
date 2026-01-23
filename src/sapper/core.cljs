@@ -104,10 +104,7 @@
   (atom seed))
 
 (defn advance-rng [rng]
-  (swap! rng #(-> % (* 1103515245) (+ 12345) (mod 2147483648))))
-
-(defn random [rng]
-  (/ @rng 2147483648))
+  (/ (swap! rng #(-> % (* 1103515245) (+ 12345) (mod 2147483648))) 2147483648))
 
 (defn parse-puzzle [puzzle]
   (let [[_ id type code] (re-find #"(([^ -]+-[^ -]+)-[^ -]+) +([foqFOQ]+)" puzzle)]

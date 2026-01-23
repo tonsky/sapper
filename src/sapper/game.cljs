@@ -55,8 +55,6 @@
 (def auto-open-timer nil)
 (def auto-open-dt 50)
 
-(declare open-cell flag-cell maybe-auto-open auto-finish on-enter)
-
 (defn neighbours [[x y]]
   (let [max-x (dec (.-width field))
         max-y (dec (.-height field))]
@@ -81,11 +79,6 @@
 (defn get-cell [pos]
   (when pos
     (.get field pos)))
-
-(defn mine-count [pos]
-  (->> (neighbours pos)
-    (filter #(:mine (get-cell %)))
-    (count)))
 
 (defn coord->pos [[x y]]
   (when (core/inside? x y grid-x grid-y grid-w grid-h)
@@ -133,29 +126,24 @@
 
 (defn update-field []
   (doseq [[pos cell] (.seq field)
-          :let [{:keys [mine label solved]} cell
-                nbs     (mapv get-cell (neighbours pos))
-                solved' (every? processed nbs)]]
-    (when (and (not= "q" label) (not mine))
-      (let [mines  (count (filter :mine nbs))
-            flags  (count (filter :flagged nbs))
-            label' (cond
-                     (:modern @core/*settings) (str (- mines flags))
-                     (> flags mines)           (str "error_" mines)
-                     :else                     (str mines))]
-        (assoc! cell :label label')))
-    (assoc! cell :solved solved')
-    (when (and
-            (not solved)
-            solved'
-            (= outline-pos pos))
-      (set! outline-pos nil)))
-  (set! flags (- (->> field .vals (filter :mine) count)
-                (->> field .vals (filter :flagged) (count))))
+          :let [nbs (mapv get-cell (neighbours pos))]]
+    (assoc! cell
+      :flags  (count (filter :flagged nbs))
+      :solved (every? processed nbs)))
+
+  (when (and outline-pos (:solved (get-cell outline-pos)))
+    (set! outline-pos nil))
+
+  (set! flags (-
+                (->> field .vals (filter :mine) count)
+                (->> field .vals (filter :flagged) count)))
+
   (assoc! (:finish buttons) :disabled (not (can-auto-finish?)))
+
   (when (->> field .vals (every? processed))
     (core/append-history (:id puzzle) :win)
     (set! phase :victory))
+
   (core/request-render))
 
 (defn restart []
@@ -187,11 +175,15 @@
         (.set field [x y]
           (case ch
             "f" {:mine true,  :open false}
-            "F" {:mine true,  :open true}
+            "F" {:mine true,  :open false, :flagged true}
             "o" {:mine false, :open false}
             "O" {:mine false, :open true}
-            "q" {:mine false, :open false, :label "q"}
-            "Q" {:mine false, :open true,  :label "q"}))))
+            "q" {:mine false, :open false, :secret true}
+            "Q" {:mine false, :open true,  :secret true}))))
+
+    (doseq [[pos cell] (.seq field)]
+      (let [nbs (mapv get-cell (neighbours pos))]
+        (assoc! cell :mines (count (filter :mine nbs)))))
 
     (update-field)
     (set! outline-pos nil)
@@ -210,7 +202,8 @@
         rng           (core/make-rng (js/parseInt (str/join (re-seq #"\d" id))))
         cell-coord    (fn [[x y]]
                         [(+ (* x cell-size) (+ grid-x) (- margin))
-                         (+ (* y cell-size) (+ grid-y) (- margin))])]
+                         (+ (* y cell-size) (+ grid-y) (- margin))])
+        modern?       (:modern @core/*settings)]
     ;; Title
     (set! (.-font ctx) "bold 24px font")
     (set! (.-textAlign ctx) "center")
@@ -225,18 +218,16 @@
     ;; cells
     (doseq [y (range (.-height field))
             x (range (.-width field))]
-      (core/advance-rng rng)
       (let [pos            [x y]
-            {:keys [mine flagged open label solved] :as cell} (get-cell pos)
-            err            (and label (or
-                                        (str/starts-with? label "-")
-                                        (str/starts-with? label "error_")))
+            cell           (get-cell pos)
+            {:keys [mine mines flagged flags open secret solved]} cell
+            random         (core/advance-rng rng)
             name           (cond
-                             (and (= :game-over phase) (= pos exploded-pos))
-                             nil
+                             (= pos exploded-pos)
+                             nil ;; render after everything else
 
                              (and (= :game-over phase) mine (not flagged))
-                             (str "mine_" (-> (core/random rng) (* 5) js/Math.floor) ".png")
+                             (str "mine_" (-> random (* 5) js/Math.floor) ".png")
 
                              (and (= :game-over phase) (not mine) flagged)
                              "flagged_wrong.png"
@@ -250,14 +241,29 @@
                              (not open)
                              "closed.png"
 
-                             err
-                             (str label ".png")
+                             (and secret solved)
+                             "secret_solved.png"
 
-                             (and open solved)
-                             (str label "_solved.png")
+                             secret
+                             "secret.png"
+
+                             (and modern? (> flags mines))
+                             (str (- mines flags) ".png")
+
+                             (> flags mines)
+                             (str "error_" mines ".png")
+
+                             (and modern? solved)
+                             "0_solved.png"
+
+                             solved
+                             (str mines "_solved.png")
+
+                             modern?
+                             (str (- mines flags) ".png")
 
                              :else
-                             (str label ".png"))
+                             (str mines ".png"))
             img            (get images name)
             anim-stagger   (-> (+ (* y (.-width field)) x) (/ (.-width field) (.-height field)))
             anim-progress' (-> anim-progress (- (* anim-stagger 0.75)) (* 4) (core/clamp 0 1))
@@ -284,21 +290,24 @@
             right   (min (dec (.-width field)) (inc x))
             bottom  (min (dec (.-height field)) (inc y))
             padding 4
-            {:keys [label mine solved]} (get-cell outline-pos)
+            {:keys [flags mines solved secret]} (get-cell outline-pos)
+            cnt     (if (:modern @core/*settings)
+                      (- mines flags)
+                      mines)
             color   (cond
-                      mine          "#E15757"
-                      solved        "#73A2C9"
-                      (= "q" label) "#73A2C9"
-                      (= "0" label) "#006073"
-                      (= "1" label) "#0A9496"
-                      (= "2" label) "#95D2BD"
-                      (= "3" label) "#E9D8A6"
-                      (= "4" label) "#EE9C02"
-                      (= "5" label) "#CA6702"
-                      (= "6" label) "#BC3E02"
-                      (= "7" label) "#AF2012"
-                      (= "8" label) "#9B2226"
-                      :else         "#9B2226")]
+                      secret          "#73A2C9"
+                      (> flags mines) "#9B2226"
+                      solved          "#73A2C9"
+                      (= 0 cnt)       "#006073"
+                      (= 1 cnt)       "#0A9496"
+                      (= 2 cnt)       "#95D2BD"
+                      (= 3 cnt)       "#E9D8A6"
+                      (= 4 cnt)       "#EE9C02"
+                      (= 5 cnt)       "#CA6702"
+                      (= 6 cnt)       "#BC3E02"
+                      (= 7 cnt)       "#AF2012"
+                      (= 8 cnt)       "#9B2226"
+                      :else           "#F0F")]
         (set! (.-strokeStyle ctx) color)
         (set! (.-lineWidth ctx) 3)
         (.beginPath ctx)
@@ -419,6 +428,7 @@
   (let [cell (get-cell pos)
         {:keys [mine open flagged]} cell
         expert? (:expert @core/*settings)]
+
     (cond+
       open
       :noop
@@ -430,6 +440,7 @@
 
       (and (not expert?) mine)
       (do
+        (set! exploded-pos pos)
         (core/append-history (:id puzzle) :lose)
         (set! phase :game-over)
         (core/request-render))
@@ -443,27 +454,27 @@
 
       :else
       (let [problem-with-flags {}
-            _ (doseq [[pos' {:keys [open flagged label]}] (.seq field)]
+            _ (doseq [[pos' {:keys [open flagged secret mines]}] (.seq field)]
                 (assoc! problem-with-flags (str/join "," pos')
                   {:open    open
                    :flagged (if (= pos pos')
                               true
                               flagged)
                    :label   (cond
-                              (not open)    nil
-                              (= "q" label) "q"
-                              flagged       nil
-                              :else         (str (mine-count pos')))}))
+                              (not open) nil
+                              secret     "q"
+                              flagged    nil
+                              :else      (str mines))}))
             problem-without-flags {}
-            _ (doseq [[pos' {:keys [open flagged label]}] (.seq field)]
+            _ (doseq [[pos' {:keys [open flagged secret mines]}] (.seq field)]
                 (assoc! problem-without-flags (str/join "," pos')
                   {:open    open
                    :flagged (= pos pos')
                    :label   (cond
-                              (not open)    nil
-                              (= "q" label) "q"
-                              flagged       nil
-                              :else         (str (mine-count pos')))}))
+                              (not open) nil
+                              secret     "q"
+                              flagged    nil
+                              :else      (str mines))}))
             cnt (count (filter :mine (.vals field)))]
 
         (if-some [counterexample (or
@@ -515,20 +526,16 @@
           (* auto-open-dt i))))))
 
 (defn can-auto-open [pos]
-  (let [cell (get-cell pos)]
-    (when (and
-            (:open cell)
-            (not= "q" (:label cell)))
+  (let [{:keys [open secret mines flags]} (get-cell pos)]
+    (when (and open (not secret))
       (let [nbs         (neighbours pos)
             unprocessed (->> nbs
                           (remove #(processed (get-cell %)))
-                          vec)
-            mines       (filterv #(:mine (get-cell %)) nbs)
-            flags       (filterv #(:flagged (get-cell %)) nbs)]
+                          vec)]
         (cond
-          (= 0 (count unprocessed))                               nil
-          (= (+ (count flags) (count unprocessed)) (count mines)) [:flag unprocessed]
-          (= (count flags) (count mines))                         [:open unprocessed])))))
+          (= 0 (count unprocessed))               nil
+          (= (+ flags (count unprocessed)) mines) [:flag unprocessed]
+          (= flags mines)                         [:open unprocessed])))))
 
 (defn auto-open []
   (loop [queue auto-open-queue]
@@ -758,7 +765,7 @@
                       "0_solved.png" "1_solved.png" "2_solved.png" "3_solved.png" "4_solved.png" "5_solved.png" "6_solved.png" "7_solved.png" "8_solved.png"
                       "-1.png" "-2.png" "-3.png" "-4.png" "-5.png" "-6.png" "-7.png" "-8.png"
                       "error_0.png" "error_1.png" "error_2.png" "error_3.png" "error_4.png" "error_5.png" "error_6.png" "error_7.png"
-                      "q.png" "q_solved.png" "closed.png" "hover.png" "flagged.png" "flag.png" "flagged_wrong.png"
+                      "secret.png" "secret_solved.png" "closed.png" "hover.png" "flagged.png" "flag.png" "flagged_wrong.png"
                       "mine_0.png" "mine_1.png" "mine_2.png" "mine_3.png" "mine_4.png" "explosion.png"
                       "tool_undo.png" "tool_eraser.png" "tool_color1.png" "tool_color2.png" "tool_color3.png" "tool_color4.png" "tool_clear.png"
                       "tool_eraser_selected.png" "tool_color1_selected.png" "tool_color2_selected.png" "tool_color3_selected.png" "tool_color4_selected.png"}})
