@@ -24,14 +24,8 @@
 (def phase)
 (def exploded-x nil)
 (def exploded-y nil)
-
 (def buttons)
-
 (def dragging-flag false)
-(def drag-x)
-(def drag-y)
-(def drag-device)
-
 (def tool nil)
 (def tools [:undo :eraser :color1 :color2 :color3 :color4 :clear])
 (def tool-colors
@@ -206,19 +200,16 @@
     (set! exploded-y nil)
     (set! phase :new)
     (set! dragging-flag false)
-    (set! drag-x nil)
-    (set! drag-y nil)
-    (set! drag-device nil)
     (set! tool nil)
     (set! notes [])
     (set! anim-start (js/Date.now))))
 
 (defn on-render []
-  (let [anim-progress   (core/clamp (/ (- (js/Date.now) anim-start) anim-length) 0 1)
-        [hover-x hover-y] (when (and drag-x drag-y)
-                            (field-coords drag-x drag-y))
-        id              (:id puzzle)
-        rng             (core/make-rng (js/parseInt (str/join (re-seq #"\d" id))))]
+  (let [anim-progress     (core/clamp (/ (- (js/Date.now) anim-start) anim-length) 0 1)
+        [hover-x hover-y] (when dragging-flag
+                            (field-coords core/pointer-x core/pointer-y))
+        id                (:id puzzle)
+        rng               (core/make-rng (js/parseInt (str/join (re-seq #"\d" id))))]
     ;; Title
     (set! (.-font ctx) "bold 24px font")
     (set! (.-textAlign ctx) "center")
@@ -238,15 +229,32 @@
             err            (and label (or (str/starts-with? label "-")
                                         (str/starts-with? label "error_")))
             name           (cond
-                             (and (= :game-over phase) (= x exploded-x) (= y exploded-y)) nil
-                             (and (= :game-over phase) mine (not flagged)) (str "mine_" (-> (core/random rng) (* 5) js/Math.floor) ".png")
-                             (and (= :game-over phase) (not mine) flagged) "flagged_wrong.png"
-                             (and (not tool) (not open) (not flagged) (= x hover-x) (= y hover-y)) "hover.png"
-                             flagged                          "flagged.png"
-                             (not open)                       "closed.png"
-                             err                              (str label ".png")
-                             (and open solved)                (str label "_solved.png")
-                             :else                            (str label ".png"))
+                             (and (= :game-over phase) (= x exploded-x) (= y exploded-y))
+                             nil
+
+                             (and (= :game-over phase) mine (not flagged))
+                             (str "mine_" (-> (core/random rng) (* 5) js/Math.floor) ".png")
+
+                             (and (= :game-over phase) (not mine) flagged)
+                             "flagged_wrong.png"
+
+                             (and dragging-flag (not open) (not flagged) (= x hover-x) (= y hover-y))
+                             "hover.png"
+
+                             flagged
+                             "flagged.png"
+
+                             (not open)
+                             "closed.png"
+
+                             err
+                             (str label ".png")
+
+                             (and open solved)
+                             (str label "_solved.png")
+
+                             :else
+                             (str label ".png"))
             img            (get images name)
             anim-stagger   (-> (+ (* y field-w) x) (/ field-w field-h))
             anim-progress' (-> anim-progress (- (* anim-stagger 0.75)) (* 4) (core/clamp 0 1))
@@ -302,12 +310,12 @@
 
     ;; Flags
     (let [[fl ft fw fh _ fg fnl] (flag-area flags)
-          over?                  (and dragging-flag drag-x drag-y (core/inside? drag-x drag-y fl ft fw fh))
+          over?                  (and dragging-flag (core/inside? core/pointer-x core/pointer-y fl ft fw fh))
           area                   (if over? [fl ft fw fh flags fg fnl] (flag-area))]
       (when-some [[l t w h visible-flags flag-gap number-left] area]
         (let [flag-img  (get images "flag.png")
               hover-idx (when over?
-                          (-> drag-x (- l) (- 20) (quot flag-gap) (core/clamp 0 (dec visible-flags))))]
+                          (-> core/pointer-x (- l) (- 20) (quot flag-gap) (core/clamp 0 (dec visible-flags))))]
           (set! (.-fillStyle ctx) "#082848")
           (.beginPath ctx)
           (.roundRect ctx l t w h 6)
@@ -368,24 +376,23 @@
           (set! (.-globalCompositeOperation notes-ctx) "source-over"))))
 
     ;; Eraser cursor
-    (when (and drag-x drag-y
-            (or
-              (= :eraser tool)
-              (and tool (= :mouse-right drag-device))))
+    (when (or
+            (= :eraser tool)
+            (and tool (= :mouse-right core/pointer-device)))
       (set! (.-strokeStyle overlay-ctx) "#FFFFFF20")
       (set! (.-lineWidth overlay-ctx) 1)
       (.beginPath overlay-ctx)
-      (.arc overlay-ctx drag-x drag-y 20 0 (* 2 js/Math.PI))
+      (.arc overlay-ctx core/pointer-x core/pointer-y 20 0 (* 2 js/Math.PI))
       (.stroke overlay-ctx))
 
     ;; Dragged flag
     (when dragging-flag
       (let [flag-img (get images "flag.png")]
         (.drawImage overlay-ctx flag-img
-          (-> drag-x (- margin) (- (quot cell-size 2)))
-          (-> drag-y (- margin) (- (case drag-device
-                                     :mouse-left (quot cell-size 2)
-                                     :touch      cell-size)))
+          (-> core/pointer-x (- margin) (- (quot cell-size 2)))
+          (-> core/pointer-y (- margin) (- (case core/pointer-device
+                                             :mouse-left (quot cell-size 2)
+                                             :touch      cell-size)))
           sprite-size sprite-size)))
 
     ;; End game screen
@@ -560,19 +567,12 @@
     (do
       (set! notes [])
       (set! tool nil)
-      (set! drag-x nil)
-      (set! drag-y nil)
-      (set! drag-device nil)
       (core/request-render))
 
     (:eraser :color1 :color2 :color3 :color4)
     (do
       (if (= tool tool')
-        (do
-          (set! tool nil)
-          (set! drag-x nil)
-          (set! drag-y nil)
-          (set! drag-device nil))
+        (set! tool nil)
         (set! tool tool'))
       (core/request-render))))
 
@@ -627,9 +627,6 @@
             (core/request-render)))))))
 
 (defn on-pointer-down [{:keys [x y device]}]
-  (set! drag-x x)
-  (set! drag-y y)
-  (set! drag-device device)
   (cond+
     tool
     (let [tool' (if (= :mouse-right device) :eraser tool)]
@@ -678,17 +675,11 @@
           (= :eraser tool)
           (and (#{:mouse-left :mouse-right :touch} device) tool)
           (and (#{:mouse-left :touch} device) dragging-flag))
-    (set! drag-x x)
-    (set! drag-y y)
     (core/request-render)))
 
 (defn on-pointer-up [{:keys [x y start-x start-y device] :as e}]
   (doseq [b (vals buttons)]
     (core/button-on-pointer-up b e))
-
-  (set! drag-x nil)
-  (set! drag-y nil)
-  (set! drag-device nil)
 
   (when (and tool (seq notes))
     (let [points (:points (last notes))]
@@ -711,8 +702,9 @@
       dragging-flag
       (do
         (when-some [[gx gy] (field-coords x y)]
-          (let [{:keys [open]} (get-cell gx gy)]
-            (flag-cell gx gy)))
+          (let [{:keys [open flagged]} (get-cell gx gy)]
+            (when (and (not open) (not flagged))
+              (flag-cell gx gy))))
         (set! dragging-flag false)
         (core/request-render))
 

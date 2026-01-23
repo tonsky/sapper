@@ -5,11 +5,11 @@
 - [ ] Store last level state and notes
 - [ ] Unopened cells count as a number
 - [ ] Controls on the left on iPad?
-- [ ] Migrate game.cljs drag-x/y to core/pointer-pos
 - [ ] Try highlighting cells instead of outline
 - [ ] New id button
 - [ ] Reset progress button
 - [ ] Show progress on main screen
+- [x] Migrate game.cljs drag-x/y to core/pointer-pos
 - [x] Live reload server
 - [x] Translate canvas so that safe area becomes 0, 0
 - [x] Screen titles

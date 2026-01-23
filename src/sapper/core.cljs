@@ -26,7 +26,9 @@
 (def puzzles-by-id {})
 (def puzzles-by-type {})
 (def *sync-id (atom nil))
-(def pointer-pos [0 0])
+(def pointer-x)
+(def pointer-y)
+(def pointer-device)
 (def *last-puzzle-id (atom nil))
 (def *settings (atom nil))
 (def default-settings
@@ -60,7 +62,7 @@
   (.clearRect overlay-ctx canvas-x canvas-y canvas-w canvas-h)
 
   ;; safe area
-  (set! (.-strokeStyle ctx) "#082848")
+  (set! (.-strokeStyle ctx) "#1F3E5F")
   (set! (.-lineWidth ctx) 1)
   (.beginPath ctx)
   (.moveTo ctx 0 10) (.lineTo ctx 0 0) (.lineTo ctx 10 0)
@@ -211,8 +213,12 @@
 
 (defn button-on-pointer-move [button e]
   (let [{:keys [l t w h text hover]} button
-        {:keys [x y]} e
-        over? (inside? x y l t w h)]
+        {:keys [start-x start-y x y device]} e
+        over? (and
+                (inside? x y l t w h)
+                (or
+                  (= :mouse-hover device)
+                  (inside? start-x start-y l t w h)))]
     (cond
       (and (not hover) over?)
       (do
@@ -544,31 +550,32 @@
 
   (.addEventListener js/window "keydown" #(call-screen-fn :on-key-down %))
 
-  (let [*start  (atom nil)
-        *device (atom nil)]
+  (let [*start (atom nil)]
     (.addEventListener overlay-canvas "touchstart"
       (fn [e]
         (.preventDefault e)
         (let [[x y] (rel-coords (aget (.-touches e) 0))]
-          (set! pointer-pos [x y])
+          (set! pointer-x x)
+          (set! pointer-y y)
+          (set! pointer-device :touch)
           (reset! *start {:start-x x, :start-y y})
-          (reset! *device :touch)
-          (call-screen-fn :on-pointer-down {:x x :y y :device @*device}))))
+          (call-screen-fn :on-pointer-down {:x x :y y :device pointer-device}))))
 
     (.addEventListener overlay-canvas "touchmove"
       (fn [e]
         (.preventDefault e)
         (let [[x y] (rel-coords (aget (.-touches e) 0))]
-          (set! pointer-pos [x y])
-          (call-screen-fn :on-pointer-move (merge @*start {:x x :y y :device @*device})))))
+          (set! pointer-x x)
+          (set! pointer-y y)
+          (call-screen-fn :on-pointer-move (merge @*start {:x x :y y :device pointer-device})))))
 
     (.addEventListener overlay-canvas "touchend"
       (fn [e]
         (.preventDefault e)
         (wake-lock/maybe-restore (:keep-awake @*settings))
         (let [[x y] (rel-coords (aget (.-changedTouches e) 0))]
-          (call-screen-fn :on-pointer-up (merge @*start {:x x :y y :device @*device}))
-          (reset! *device nil))))
+          (call-screen-fn :on-pointer-up (merge @*start {:x x :y y :device pointer-device}))
+          (set! pointer-device nil))))
 
     (.addEventListener overlay-canvas "mousedown"
       (fn [e]
@@ -577,25 +584,27 @@
                              2 :mouse-right
                              nil)]
           (let [[x y] (rel-coords e)]
-            (set! pointer-pos [x y])
+            (set! pointer-x x)
+            (set! pointer-y y)
+            (set! pointer-device device)
             (reset! *start {:start-x x, :start-y y})
-            (reset! *device device)
-            (call-screen-fn :on-pointer-down {:x x :y y :device @*device})))))
+            (call-screen-fn :on-pointer-down {:x x :y y :device pointer-device})))))
 
     (.addEventListener overlay-canvas "mousemove"
       (fn [e]
-        (when-some [device (or @*device :mouse-hover)]
+        (when-some [device (or pointer-device :mouse-hover)]
           (let [[x y] (rel-coords e)]
-            (set! pointer-pos [x y])
+            (set! pointer-x x)
+            (set! pointer-y y)
             (call-screen-fn :on-pointer-move (merge @*start {:x x :y y :device device}))))))
 
     (.addEventListener overlay-canvas "mouseup"
       (fn [e]
         (wake-lock/maybe-restore (:keep-awake @*settings))
-        (when-some [device @*device]
+        (when-some [device pointer-device]
           (let [[x y] (rel-coords e)]
             (call-screen-fn :on-pointer-up (merge @*start {:x x :y y :device device}))
-            (reset! *device nil)))))
+            (set! pointer-device nil)))))
 
     (call-screen-fn-impl [:loading] :on-enter [:loading])
 
