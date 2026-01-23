@@ -7,34 +7,32 @@
 
 (defn on-enter []
   (set! types (->> core/puzzles-by-type keys sort))
-  (let [[left top width height] core/safe-area]
-    (set! buttons
-      [{:l (- width 60) :t 10 :w 50 :h 50 :icon "btn_settings.png" :on-click #(core/navigate [:settings])}])
-    (let [cols           4
-          rows           (-> (dec (count types)) (quot cols) inc)
-          btn-w          (-> width (- 50) (- (* 20 (dec cols))) (/ cols))
-          t              (-> height (- (* rows (+ 50 20))) (quot 2))]
-      (doseq [y (range rows)
-              x (range cols)
-              :let [i (+ (* y cols) x)]
-              :when (< i (count types))
-              :let [type (nth types i)]]
-        (conj! buttons {:l (+ 25 (* x (+ btn-w 20))) :t (+ t (* y 70)) :w btn-w :h 50
-                        :text type
-                        :on-click (fn [_]
-                                    (core/navigate [:level-select type]))})))))
+  (set! buttons
+    [{:l (- core/safe-w 60) :t 10 :w 50 :h 50 :icon "btn_settings.png" :on-click #(core/navigate [:settings])}])
+  (let [cols  4
+        rows  (-> (dec (count types)) (quot cols) inc)
+        btn-w (-> core/safe-w (- 50) (- (* 20 (dec cols))) (/ cols))
+        t     (-> core/safe-h (- (* rows (+ 50 20))) (quot 2))]
+    (doseq [y (range rows)
+            x (range cols)
+            :let [i (+ (* y cols) x)]
+            :when (< i (count types))
+            :let [type (nth types i)]]
+      (conj! buttons {:l (+ 25 (* x (+ btn-w 20))) :t (+ t (* y 70)) :w btn-w :h 50
+                      :text type
+                      :on-click (fn [_]
+                                  (core/navigate [:level-select type]))}))))
 
 (defn on-render []
-  (let [[sa-left sa-top sa-width _] core/safe-area]
-    (doseq [b buttons]
-      (core/button-render b))
+  (doseq [b buttons]
+    (core/button-render b))
 
-    ;; Title
-    (set! (.-font ctx) "bold 24px font")
-    (set! (.-textAlign ctx) "center")
-    (set! (.-textBaseline ctx) "middle")
-    (set! (.-fillStyle ctx) "#FFF")
-    (.fillText ctx "1 Minesweeper Variant" (+ sa-left (quot sa-width 2)) (+ sa-top 35))))
+  ;; Title
+  (set! (.-font ctx) "bold 24px font")
+  (set! (.-textAlign ctx) "center")
+  (set! (.-textBaseline ctx) "middle")
+  (set! (.-fillStyle ctx) "#FFF")
+  (.fillText ctx "1 Minesweeper Variant" (quot core/safe-w 2) 35))
 
 (defn on-pointer-move [e]
   (doseq [b buttons]

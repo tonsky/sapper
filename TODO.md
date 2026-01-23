@@ -4,10 +4,11 @@
 - [ ] Unopened cells count as a number
 - [ ] Controls on the left on iPad?
 - [ ] Migrate game.cljs drag-x/y to core/pointer-pos
-- [ ] Translate canvas so that safe area becomes 0, 0
 - [ ] Try highlighting cells instead of outline
 - [ ] New id button
 - [ ] Reset progress button
+- [ ] Show progress on main screen
+- [x] Translate canvas so that safe area becomes 0, 0
 - [x] Screen titles
 - [x] History API-based navigation
 - [x] requestAnimationFrame rendering

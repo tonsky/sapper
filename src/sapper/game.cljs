@@ -1,7 +1,7 @@
 (ns sapper.game
   (:require
    [clojure.string :as str]
-   [sapper.core :as core :refer [canvas ctx notes-ctx overlay-ctx canvas-w canvas-h canvas-scale dpi images safe-area sprite-size]]
+   [sapper.core :as core :refer [ctx notes-ctx overlay-ctx images safe-w safe-h sprite-size]]
    [sapper.level-select :as level-select]
    [sapper.solver :as solver])
   (:require-macros
@@ -101,7 +101,7 @@
                          (>= flags' 1)  25
                          :else          0)
             combined-w (+ total-w 15 number-w)
-            left       (-> canvas-w (- combined-w) (quot 2))
+            left       (-> safe-w (- combined-w) (quot 2))
             top        (+ grid-y grid-h 30)]
         [left
          top
@@ -166,26 +166,24 @@
   (core/request-render))
 
 (defn-log on-enter [[_ id]]
-  (let [_                (set! puzzle (get core/puzzles-by-id id))
-        [left top width] core/safe-area
-        code             (:code puzzle)
-        [_ fw fh]        (re-find #"(\d+)x(\d+)" id)
-        len              (count code)]
+  (let [_         (set! puzzle (get core/puzzles-by-id id))
+        code      (:code puzzle)
+        [_ fw fh] (re-find #"(\d+)x(\d+)" id)
+        len       (count code)]
 
     (set! buttons
-      {:back     {:l  10           :t 10 :w 50 :h 50 :icon "btn_back.png"     :on-click #(core/navigate [:level-select (:type puzzle)])}
-       :random   {:l (- width 120) :t 10 :w 50 :h 50 :icon "btn_random.png"   :on-click #(core/load-random-puzzle (:type puzzle))}
-       :settings {:l (- width  60) :t 10 :w 50 :h 50 :icon "btn_settings.png" :on-click #(core/navigate [:settings])}
-       :restart  {:l (- width 120) :t 70 :w 50 :h 50 :icon "btn_restart.png"  :on-click restart}
-       :finish   {:l (- width  60) :t 70 :w 50 :h 50 :icon "btn_finish.png"   :on-click auto-finish :disabled true}})
+      {:back     {:l  10            :t 10 :w 50 :h 50 :icon "btn_back.png"     :on-click #(core/navigate [:level-select (:type puzzle)])}
+       :random   {:l (- safe-w 120) :t 10 :w 50 :h 50 :icon "btn_random.png"   :on-click #(core/load-random-puzzle (:type puzzle))}
+       :settings {:l (- safe-w  60) :t 10 :w 50 :h 50 :icon "btn_settings.png" :on-click #(core/navigate [:settings])}
+       :restart  {:l (- safe-w 120) :t 70 :w 50 :h 50 :icon "btn_restart.png"  :on-click restart}
+       :finish   {:l (- safe-w  60) :t 70 :w 50 :h 50 :icon "btn_finish.png"   :on-click auto-finish :disabled true}})
 
     (set! phase :init)
     (set! field-w (parse-long fw))
     (set! field-h (parse-long fh))
     (set! grid-w (* field-w cell-size))
     (set! grid-h (* field-h cell-size))
-    (set! grid-x (-> canvas-w (- grid-w) (quot 2)))
-    (set! grid-y (-> canvas-h (- 100) (- grid-h) (quot 2)))
+    (on-resize)
     (set! field {})
 
     (dotimes [i (* field-w field-h)]
@@ -216,18 +214,17 @@
     (set! anim-start (js/Date.now))))
 
 (defn on-render []
-  (let [[sa-left sa-top sa-width _] safe-area
-        anim-progress               (core/clamp (/ (- (js/Date.now) anim-start) anim-length) 0 1)
-        [hover-x hover-y]           (when (and drag-x drag-y)
-                                      (field-coords drag-x drag-y))
-        id                          (:id puzzle)
-        rng                         (core/make-rng (js/parseInt (str/join (re-seq #"\d" id))))]
+  (let [anim-progress   (core/clamp (/ (- (js/Date.now) anim-start) anim-length) 0 1)
+        [hover-x hover-y] (when (and drag-x drag-y)
+                            (field-coords drag-x drag-y))
+        id              (:id puzzle)
+        rng             (core/make-rng (js/parseInt (str/join (re-seq #"\d" id))))]
     ;; Title
     (set! (.-font ctx) "bold 24px font")
     (set! (.-textAlign ctx) "center")
     (set! (.-textBaseline ctx) "middle")
     (set! (.-fillStyle ctx) "#FFF")
-    (.fillText ctx id (+ sa-left (quot sa-width 2)) (+ sa-top 35))
+    (.fillText ctx id (quot safe-w 2) 35)
 
     ;; buttons
     (doseq [b (vals buttons)]
@@ -291,7 +288,7 @@
                       (= "6" label) "#BC3E02"
                       (= "7" label) "#AF2012"
                       (= "8" label) "#9B2226"
-                      :else         #"73A2C9")]
+                      :else         "#9B2226")]
         (set! (.-strokeStyle ctx) color)
         (set! (.-lineWidth ctx) 3)
         (.beginPath ctx)
@@ -325,16 +322,16 @@
           (set! (.-font ctx) "bold 42px font")
           (set! (.-textAlign ctx) "left")
           (set! (.-textBaseline ctx) "middle")
-          (set! (.-fillStyle ctx) "#FA8787")
+          (set! (.-fillStyle ctx) "#DA4F55")
           (.fillText ctx (str visible-flags) number-left (+ t (quot h 2))))))
 
     ;; Tools
     (let [width       (* (count tools) tool-size)
-          left        (quot (- canvas-w width) 2)
+          left        (quot (- safe-w width) 2)
           tool-margin (-> sprite-size (- tool-size) (/ 2))]
       (doseq [[i t] (core/indexed tools)
               :let [x   (+ left (* i tool-size))
-                    y   (+ grid-y grid-h 115)
+                    y   (- safe-h 25 tool-size)
                     img (get images (str "tool_" t (if (= t tool) "_selected" "") ".png"))]]
         (.drawImage ctx img (- x tool-margin) (- y tool-margin) sprite-size sprite-size)))
 
@@ -344,7 +341,7 @@
             :let [t         (:tool stroke)
                   points    (:points stroke)
                   nth-point #(let [[x y] (aget points %)]
-                               [(+ x sa-left dx) (+ y sa-top dy)])]]
+                               [(+ x dx) (+ y dy)])]]
       (when (seq points)
         (set! (.-lineWidth notes-ctx) (case t :eraser 40 6))
         (set! (.-strokeStyle notes-ctx)
@@ -354,7 +351,8 @@
             :else            (get tool-colors t)))
         (set! (.-lineCap notes-ctx) "round")
         (set! (.-lineJoin notes-ctx) "round")
-        (set! (.-globalCompositeOperation notes-ctx) (case t :eraser "destination-out" "source-over"))
+        (when (= :eraser t)
+          (set! (.-globalCompositeOperation notes-ctx) "destination-out"))
         (.beginPath notes-ctx)
         (let [[x y] (nth-point 0)]
           (.moveTo notes-ctx x y))
@@ -366,7 +364,8 @@
           (.lineTo notes-ctx x y))
 
         (.stroke notes-ctx)
-        (set! (.-globalCompositeOperation notes-ctx) "source-over")))
+        (when (= :eraser t)
+          (set! (.-globalCompositeOperation notes-ctx) "source-over"))))
 
     ;; Eraser cursor
     (when (and drag-x drag-y
@@ -392,7 +391,7 @@
     ;; End game screen
     (when (#{:game-over :victory} phase)
       (set! (.-fillStyle overlay-ctx) "#07294798")
-      (.fillRect overlay-ctx 0 (+ grid-y (quot (- grid-h 90) 2)) canvas-w 90)
+      (.fillRect overlay-ctx core/canvas-x (+ grid-y (quot (- grid-h 90) 2)) core/canvas-w 90)
       (set! (.-font overlay-ctx) "bold 40px font")
       (set! (.-textAlign overlay-ctx) "center")
       (set! (.-textBaseline overlay-ctx) "middle")
@@ -578,8 +577,8 @@
       (core/request-render))))
 
 (defn on-resize []
-  (set! grid-x (-> core/canvas-w (- grid-w) (quot 2)))
-  (set! grid-y (-> core/canvas-h (- 100) (- grid-h) (quot 2)))
+  (set! grid-x (-> safe-w (- grid-w) (quot 2)))
+  (set! grid-y (-> safe-h (- 100) (- grid-h) (quot 2)))
   (core/request-render))
 
 (defn on-key-down [e]
@@ -668,16 +667,13 @@
     (core/button-on-pointer-move b e))
 
   (when (and (#{:mouse-left :mouse-right :touch} device) tool (seq notes))
-    (let [[sa-left sa-top] safe-area
-          points      (:points (last notes))
-          rel-x       (- x sa-left)
-          rel-y       (- y sa-top)
-          num-points  (count points)]
+    (let [points     (:points (last notes))
+          num-points (count points)]
       (if (and
             (>= num-points 2)
             (< (core/dist (last points) (core/penultimate points)) 5))
-        (aset points (dec num-points) [rel-x rel-y])
-        (conj! points [rel-x rel-y]))))
+        (aset points (dec num-points) [x y])
+        (conj! points [x y]))))
   (when (or
           (= :eraser tool)
           (and (#{:mouse-left :mouse-right :touch} device) tool)
@@ -707,8 +703,8 @@
 
   (let [[gx gy]   (field-coords x y)
         toolbox-w (* (count tools) tool-size)
-        toolbox-x (quot (- canvas-w toolbox-w) 2)
-        toolbox-y (+ grid-y grid-h 115)
+        toolbox-x (quot (- safe-w toolbox-w) 2)
+        toolbox-y (- safe-h 25 tool-size)
         in?       #(core/both-inside? x y start-x start-y %1 %2 %3 %4 %5)]
     (cond+
       ;; drop flag
@@ -721,7 +717,7 @@
         (core/request-render))
 
       ;; toolbox
-      (in? toolbox-x (+ grid-y grid-h 115) toolbox-w tool-size)
+      (in? toolbox-x toolbox-y toolbox-w tool-size)
       (let [i (quot (- x toolbox-x) tool-size)
             t (nth tools i)]
         (on-tool-click (nth tools i)))

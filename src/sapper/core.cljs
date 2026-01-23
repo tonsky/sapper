@@ -11,12 +11,15 @@
 (def notes-ctx nil)
 (def overlay-canvas nil)
 (def overlay-ctx nil)
+(def canvas-x 0)
+(def canvas-y 0)
 (def canvas-w 0)
 (def canvas-h 0)
 (def canvas-scale 1)
 (def dpi (or (.-devicePixelRatio js/window) 1))
 (def sprite-size 100)
-(def safe-area nil)
+(def safe-w 580)
+(def safe-h 960)
 (def *screen (atom [:loading]))
 (def screens {})
 (def images {})
@@ -52,9 +55,20 @@
 
 (defn render [screen]
   (reset! *render-requested false)
-  (.clearRect ctx 0 0 canvas-w canvas-h)
-  (.clearRect notes-ctx 0 0 canvas-w canvas-h)
-  (.clearRect overlay-ctx 0 0 canvas-w canvas-h)
+  (.clearRect ctx canvas-x canvas-y canvas-w canvas-h)
+  (.clearRect notes-ctx canvas-x canvas-y canvas-w canvas-h)
+  (.clearRect overlay-ctx canvas-x canvas-y canvas-w canvas-h)
+
+  ;; safe area
+  (set! (.-strokeStyle ctx) "#082848")
+  (set! (.-lineWidth ctx) 1)
+  (.beginPath ctx)
+  (.moveTo ctx 0 10) (.lineTo ctx 0 0) (.lineTo ctx 10 0)
+  (.moveTo ctx (- safe-w 10) 0) (.lineTo ctx safe-w 0) (.lineTo ctx safe-w 10)
+  (.moveTo ctx safe-w (- safe-h 10)) (.lineTo ctx safe-w safe-h) (.lineTo ctx (- safe-w 10) safe-h)
+  (.moveTo ctx 10 safe-h) (.lineTo ctx 0 safe-h) (.lineTo ctx 0 (- safe-h 10))
+  (.stroke ctx)
+
   (call-screen-fn-impl (or screen @*screen) :on-render))
 
 ;; UTILS
@@ -169,38 +183,36 @@
 ;; BUTTONS
 
 (defn button-render [{:keys [l t w h text icon hover disabled]}]
-  (let [[left top _ _] safe-area]
-    (when disabled
-      (set! (.-globalAlpha ctx) 0.5))
+  (when disabled
+    (set! (.-globalAlpha ctx) 0.5))
 
-    (set! (.-fillStyle ctx)
-      (cond
-        disabled "#2e4d6f"
-        hover    "#466689"
-        :else    "#2e4d6f"))
-    (.beginPath ctx)
-    (.roundRect ctx (+ left l) (+ top t) w h 4)
-    (.fill ctx)
+  (set! (.-fillStyle ctx)
     (cond
-      text
-      (do
-        (set! (.-font ctx) "16px font")
-        (set! (.-textAlign ctx) "center")
-        (set! (.-textBaseline ctx) "middle")
-        (set! (.-fillStyle ctx) (if disabled "#082848" "#fff"))
-        (.fillText ctx text (+ left l (quot w 2)) (+ top t (quot h 2))))
+      disabled "#2e4d6f"
+      hover    "#466689"
+      :else    "#2e4d6f"))
+  (.beginPath ctx)
+  (.roundRect ctx l t w h 4)
+  (.fill ctx)
+  (cond
+    text
+    (do
+      (set! (.-font ctx) "16px font")
+      (set! (.-textAlign ctx) "center")
+      (set! (.-textBaseline ctx) "middle")
+      (set! (.-fillStyle ctx) (if disabled "#082848" "#fff"))
+      (.fillText ctx text (+ l (quot w 2)) (+ t (quot h 2))))
 
-      icon
-      (.drawImage ctx (get images icon) (+ left l (quot (- w sprite-size) 2)) (+ top t (quot (- h sprite-size) 2)) sprite-size sprite-size))
+    icon
+    (.drawImage ctx (get images icon) (+ l (quot (- w sprite-size) 2)) (+ t (quot (- h sprite-size) 2)) sprite-size sprite-size))
 
-    (when disabled
-      (set! (.-globalAlpha ctx) 1))))
+  (when disabled
+    (set! (.-globalAlpha ctx) 1)))
 
 (defn button-on-pointer-move [button e]
-  (let [[left top _ _] safe-area
-        {:keys [l t w h text hover]} button
+  (let [{:keys [l t w h text hover]} button
         {:keys [x y]} e
-        over? (inside? x y (+ left l) (+ top t) w h)]
+        over? (inside? x y l t w h)]
     (cond
       (and (not hover) over?)
       (do
@@ -213,35 +225,32 @@
         (request-render)))))
 
 (defn button-on-pointer-up [button e]
-  (let [[left top _ _] safe-area
-        {:keys [l t w h on-click disabled]} button
+  (let [{:keys [l t w h on-click disabled]} button
         {:keys [x y start-x start-y]} e]
-    (when (and (not disabled) (both-inside? x y start-x start-y (+ left l) (+ top t) w h) on-click)
+    (when (and (not disabled) (both-inside? x y start-x start-y l t w h) on-click)
       (on-click e))))
 
 ;; TOGGLES
 
 (defn toggle-render [toggle]
   (let [{:keys [l t get-value text]} toggle
-        [left top _ _] safe-area
         value (get-value)]
     (.drawImage ctx (get images "toggle.png")
       0 (if value 0 200) 200 200
-      (+ left l -25) (+ top t -25) sprite-size sprite-size)
+      (+ l -25) (+ t -25) sprite-size sprite-size)
 
     (set! (.-font ctx) "16px font")
     (set! (.-textAlign ctx) "left")
     (set! (.-textBaseline ctx) "middle")
     (set! (.-fillStyle ctx) "#fff")
-    (.fillText ctx text (+ left l 50 15) (+ top t 25))
+    (.fillText ctx text (+ l 50 15) (+ t 25))
 
     (set! (.-w toggle) (+ 50 15 (:width (.measureText ctx text))))))
 
 (defn toggle-on-pointer-up [toggle e]
-  (let [[left top _ _] safe-area
-        {:keys [l t w get-value set-value]} toggle
+  (let [{:keys [l t w get-value set-value]} toggle
         {:keys [x y start-x start-y]} e]
-    (when (both-inside? x y start-x start-y (+ left l) (+ top t) w 50)
+    (when (both-inside? x y start-x start-y l t w 50)
       (set-value (not (get-value)))
       (request-render))))
 
@@ -433,40 +442,32 @@
 
 (defn rel-coords [e]
   (let [rect (.getBoundingClientRect canvas)
-        x    (-> (.-clientX e) (- (.-left rect)) (* dpi) (/ canvas-scale) js/Math.round)
-        y    (-> (.-clientY e) (- (.-top rect)) (* dpi) (/ canvas-scale) js/Math.round)]
+        x    (-> (.-clientX e) (- (.-left rect)) (* dpi) (/ canvas-scale) (+ canvas-x) js/Math.round)
+        y    (-> (.-clientY e) (- (.-top rect)) (* dpi) (/ canvas-scale) (+ canvas-y) js/Math.round)]
     [x y]))
 
 (defn on-resize []
-  (let [safe-w 580
-        safe-h 1000
-        w      (.-innerWidth js/window)
+  (let [w      (.-innerWidth js/window)
         h      (.-innerHeight js/window)
         dw     (* w dpi)
         dh     (* h dpi)
         scales [4 3 2.5 2 1.75 1.5 1.25 1 0.75 0.6666667 0.5 0.3333333 0.25]
         sx     (some #(when (<= (* % safe-w) dw) %) scales)
-        sy     (some #(when (<= (* % safe-h) dh) %) scales)
-        scale  (min sx sy)]
-    (set! canvas-w (-> dw (/ scale) (/ 2) js/Math.floor (* 2)))
-    (set! canvas-h (-> dh (/ scale) (/ 2) js/Math.floor (* 2)))
-    (set! canvas-scale scale)
-    (set! safe-area [(quot (- canvas-w safe-w) 2) (quot (- canvas-h safe-h) 2) safe-w safe-h])
+        sy     (some #(when (<= (* % safe-h) dh) %) scales)]
+    (set! canvas-scale (min sx sy))
+    (set! canvas-w (-> dw (/ canvas-scale) (/ 2) js/Math.floor (* 2)))
+    (set! canvas-h (-> dh (/ canvas-scale) (/ 2) js/Math.floor (* 2)))
+    (set! canvas-x (quot (- safe-w canvas-w) 2))
+    (set! canvas-y (quot (- safe-h canvas-h) 2))
 
-    (set! (.-width canvas) dw)
-    (set! (.-height canvas) dh)
-    (.resetTransform ctx)
-    (.scale ctx canvas-scale canvas-scale)
+    (doseq [canvas [canvas notes-canvas overlay-canvas]
+            :let [ctx (.getContext canvas "2d")]]
+      (set! (.-width canvas) dw)
+      (set! (.-height canvas) dh)
+      (.resetTransform ctx)
+      (.scale ctx canvas-scale canvas-scale)
+      (.translate ctx (- canvas-x) (- canvas-y)))
 
-    (set! (.-width notes-canvas) dw)
-    (set! (.-height notes-canvas) dh)
-    (.resetTransform notes-ctx)
-    (.scale notes-ctx canvas-scale canvas-scale)
-
-    (set! (.-width overlay-canvas) dw)
-    (set! (.-height overlay-canvas) dh)
-    (.resetTransform overlay-ctx)
-    (.scale overlay-ctx canvas-scale canvas-scale)
     (request-render)))
 
 (defn on-load []
