@@ -6,11 +6,10 @@
 (def buttons)
 
 (defn on-enter []
-  (set! js/window.location.hash "menu")
   (set! types (->> core/puzzles-by-type keys sort))
   (let [[left top width height] core/safe-area]
     (set! buttons
-      [{:l (- width 75) :t 25 :w 50 :h 50 :icon "btn_settings.png" :on-click #(reset! core/*screen [:settings])}])
+      [{:l (- width 75) :t 25 :w 50 :h 50 :icon "btn_settings.png" :on-click #(core/navigate [:settings])}])
 
     (let [cols           4
           rows           (-> (dec (count types)) (quot cols) inc)
@@ -24,7 +23,7 @@
         (conj! buttons {:l (+ 25 (* x (+ btn-w 20))) :t (+ t (* y 70)) :w btn-w :h 50
                         :text type
                         :on-click (fn [_]
-                                    (reset! core/*screen [:level-select type]))})))))
+                                    (core/navigate [:level-select type]))})))))
 
 (defn on-render []
   (doseq [b buttons]

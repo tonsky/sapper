@@ -10,21 +10,19 @@
 (def type)
 (def buttons)
 
-(defn on-enter []
-  (let [[left top width] core/safe-area
-        [_ t] @core/*screen]
+(defn on-enter [[_ t]]
+  (let [[left top width] core/safe-area]
     (set! type t)
-    (set! js/window.location.hash (str "level-select/" t))
     (set! statuses (core/puzzle-statuses t))
     (set! buttons
-      [{:l  25           :t 25 :w 50 :h 50 :icon "btn_back.png"     :on-click #(reset! core/*screen [:menu])}
+      [{:l  25           :t 25 :w 50 :h 50 :icon "btn_back.png"     :on-click #(core/navigate [:menu])}
        {:l (- width 150) :t 25 :w 50 :h 50 :icon "btn_random.png"   :on-click #(core/load-random-puzzle type)}
-       {:l (- width  75) :t 25 :w 50 :h 50 :icon "btn_settings.png" :on-click #(reset! core/*screen [:settings])}])
+       {:l (- width  75) :t 25 :w 50 :h 50 :icon "btn_settings.png" :on-click #(core/navigate [:settings])}])
     (core/sync-history t
       (fn [lines]
         (let [parsed (keep #(core/parse-history-line t %) lines)]
           (set! statuses (core/puzzle-statuses t parsed))
-          (core/render))))))
+          (core/request-render))))))
 
 (defn on-render []
   (doseq [b buttons]
@@ -105,7 +103,7 @@
     (when (core/both-inside? start-x start-y x y (+ left 20) (+ top 100) (* 30 18) (* 30 23))
       (when-some [idx (mouse->idx x y)]
         (let [id (-> core/puzzles-by-type (get type) (nth idx) :id)]
-          (reset! core/*screen [:game id]))))))
+          (core/navigate [:game id]))))))
 
 (assoc! core/screens :level-select
   {:on-enter        on-enter

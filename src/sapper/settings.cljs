@@ -12,7 +12,7 @@
 
 (defn show-message [m]
   (set! sync-message m)
-  (core/render)
+  (core/request-render)
   (js/setTimeout
     #(when (= m sync-message)
        (set! sync-message nil)
@@ -33,27 +33,34 @@
           (show-message "Pasted!"))
         (show-message "Invalid Sync ID")))))
 
+(defn on-key-down [e]
+  (when (= "Escape" (.-key e))
+    (close)))
+
 ;; Screen logic
 
 (defn reload []
-  (let [screen @core/*previous-screen]
-    (when (and screen (not= screen [:loading]))
-      (let [hash (str/join "/" screen)]
-        (set! js/window.location.hash hash)))
-    (.reload js/window.location)))
+  (js/history.back)
+  (js/setTimeout #(.reload js/window.location) 100))
 
-(defn on-enter []
-  (set! js/window.location.hash "settings")
+(defn close []
+  (cond
+    (nil? @core/*background-screen)
+    (core/navigate [:menu])
+
+    (= [:loading] @core/*background-screen)
+    (core/navigate [:menu])
+
+    :else
+    (js/history.back)))
+
+(defn on-enter [_]
   (let [[_ _ width _] core/safe-area]
     (set! buttons
-      {:close  {:l (- width 75) :t  25 :w 50 :h 50 :icon "btn_close.png"  :on-click #(reset! core/*screen
-                                                                                       (case @core/*previous-screen
-                                                                                         [:loading] [:menu]
-                                                                                         nil        [:menu]
-                                                                                         @core/*previous-screen))}
-       :copy   {:l 200          :t 560 :w  80 :h 50 :text "Copy"           :on-click on-sync-id-copy}
-       :paste  {:l 290          :t 560 :w  80 :h 50 :text "Paste"          :on-click on-sync-id-paste}
-       :reload {:l 200          :t 670 :w 120 :h 50 :text "Reload app"     :on-click reload}})
+      {:close  {:l (- width 75) :t  25 :w  50 :h 50 :icon "btn_close.png" :on-click close}
+       :copy   {:l 200          :t 560 :w  80 :h 50 :text "Copy"          :on-click on-sync-id-copy}
+       :paste  {:l 290          :t 560 :w  80 :h 50 :text "Paste"         :on-click on-sync-id-paste}
+       :reload {:l 200          :t 670 :w 120 :h 50 :text "Reload app"    :on-click reload}})
 
     (set! toggles
       (into {}
@@ -110,6 +117,7 @@
 (assoc! core/screens :settings
   {:on-enter        on-enter
    :on-render       on-render
+   :on-key-down     on-key-down
    :on-pointer-move on-pointer-move
    :on-pointer-up   on-pointer-up
    :resources       #{"btn_close.png"}})

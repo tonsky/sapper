@@ -18,7 +18,6 @@
 (def sprite-size 100)
 (def safe-area nil)
 (def *screen (atom [:loading]))
-(def *previous-screen (atom nil))
 (def screens {})
 (def images {})
 (def puzzles-by-id {})
@@ -121,25 +120,14 @@
         union   (-> won (.union lost) (.union started))
         fresh   (into [] (remove #(.has union %) puzzles))]
     (if-not (empty? fresh)
-      (reset! *screen [:game (rand-nth fresh)])
+      (navigate [:game (rand-nth fresh)])
       (let [just-started (-> started (.difference won) (.difference lost))]
         (if-not (empty? just-started)
-          (reset! *screen [:game (rand-nth just-started)])
+          (navigate [:game (rand-nth just-started)])
           (let [just-lost (-> lost (.difference won) (.difference started))]
             (if-not (empty? just-lost)
-              (reset! *screen [:game (rand-nth just-lost)])
-              (reset! *screen [:game (rand-nth puzzles)]))))))))
-
-(defn screen->hash [screen]
-  (str/join "/" screen))
-
-(defn hash->screen [hash]
-  (as-> hash %
-    (or % "")
-    (str/replace % #"^#" "")
-    (if (str/blank? %) nil %)
-    (or % "menu")
-    (str/split % #"/")))
+              (navigate [:game (rand-nth just-lost)])
+              (navigate [:game (rand-nth puzzles)]))))))))
 
 ;; Resources
 
@@ -398,6 +386,64 @@
     (when (<= v 2)
       (upgrade-storage-v2))))
 
+;; NAVIGATION
+
+(defn screen->hash [screen]
+  (str "#" (str/join "/" screen)))
+
+(defn hash->screen [hash]
+  (as-> hash %
+    (or % "")
+    (str/replace % #"^#" "")
+    (if (str/blank? %) nil %)
+    (or % "menu")
+    (str/split % #"/")))
+
+(def *background-screen
+  (atom nil))
+
+(defn on-screen-change [old new]
+  #_(println "on-screen-change" old new)
+  ;; navigating into settings doesn't destroy old screen
+  (if (= [:settings] new)
+    (reset! *background-screen old)
+    (call-screen-fn-impl old :on-exit old))
+
+  (cond
+    ;; navigating back from settings to the same screen doesn't re-initialize it
+    (and
+      (= [:settings] old)
+      (= @*background-screen new))
+    (do
+      (call-screen-fn-impl new :on-reenter new)
+      (reset! *background-screen nil))
+
+    ;; navigating back from settings to another screen exits old and enters new
+    (and
+      (= [:settings] old)
+      @*background-screen)
+    (do
+      (call-screen-fn-impl @*background-screen :on-exit old)
+      (reset! *background-screen nil)
+      (call-screen-fn-impl new :on-enter new))
+
+    :else
+    (call-screen-fn-impl new :on-enter new))
+
+  (request-render))
+
+(defn on-navigate [_e]
+  (let [screen  (hash->screen js/window.location.hash)
+        [old _] (reset-vals! *screen screen)]
+    #_(println "on-navigate" old screen)
+    (on-screen-change old screen)))
+
+(defn navigate [screen]
+  (let [[old _] (reset-vals! *screen screen)]
+    #_(println "navigate" old screen)
+    (js/history.pushState nil "" (screen->hash screen))
+    (on-screen-change old screen)))
+
 ;; EVENTS
 
 (defn rel-coords [e]
@@ -437,11 +483,6 @@
     (.resetTransform overlay-ctx)
     (.scale overlay-ctx canvas-scale canvas-scale)
     (request-render)))
-
-(defn on-navigate [_e]
-  (let [screen (hash->screen js/window.location.hash)]
-    (when (not= @*screen screen)
-      (reset! *screen screen))))
 
 (defn on-load []
   (println "Loading...")
@@ -504,20 +545,6 @@
       (.preventDefault e)))
 
   ;; event handlers
-  (add-watch *screen ::on-enter
-    (fn [_ _ old new]
-      (when (not= old new)
-        (let [[prev _] (reset-vals! *previous-screen old)]
-          (if (= [:settings] new)
-            :noop
-            (call-screen-fn-impl old :on-exit))
-          (if (and
-                (= [:settings] old)
-                (= prev new))
-            :noop
-            (call-screen-fn-impl new :on-enter))
-          (render new)))))
-
   (.addEventListener js/window "resize"
     (fn [e]
       (on-resize e)
@@ -584,9 +611,9 @@
             (call-screen-fn :on-pointer-up (merge @*start {:x x :y y :device device}))
             (reset! *device nil)))))
 
-    (call-screen-fn-impl [:loading] :on-enter)
+    (call-screen-fn-impl [:loading] :on-enter [:loading])
 
-    (.addEventListener js/window "hashchange" on-navigate)
+    (.addEventListener js/window "popstate" on-navigate)
 
     (load-resources on-navigate)))
 

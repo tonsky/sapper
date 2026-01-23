@@ -9,6 +9,7 @@
 - [ ] Try highlighting cells instead of outline
 - [ ] New id button
 - [ ] Reset progress button
+- [x] History API-based navigation
 - [x] requestAnimationFrame rendering
 - [x] Fix auto-open in classic mode
 - [x] Move reload to settings

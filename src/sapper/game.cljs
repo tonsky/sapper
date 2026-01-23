@@ -162,24 +162,22 @@
   (core/request-render))
 
 (defn restart []
-  (on-enter)
+  (on-enter @core/*screen)
   (core/request-render))
 
-(defn-log on-enter []
-  (let [[_ id]           @core/*screen
-        _                (set! js/window.location.hash (str "game/" id))
-        _                (set! puzzle (get core/puzzles-by-id id))
+(defn-log on-enter [[_ id]]
+  (let [_                (set! puzzle (get core/puzzles-by-id id))
         [left top width] core/safe-area
         code             (:code puzzle)
         [_ fw fh]        (re-find #"(\d+)x(\d+)" id)
         len              (count code)]
 
     (set! buttons
-      {:back     {:l  25           :t 25 :w 50 :h 50 :icon "btn_back.png"     :on-click #(reset! core/*screen [:level-select (:type puzzle)])}
+      {:back     {:l  25           :t 25 :w 50 :h 50 :icon "btn_back.png"     :on-click #(core/navigate [:level-select (:type puzzle)])}
        :restart  {:l (- width 300) :t 25 :w 50 :h 50 :icon "btn_restart.png"  :on-click restart}
        :finish   {:l (- width 225) :t 25 :w 50 :h 50 :icon "btn_finish.png"   :on-click auto-finish :disabled true}
        :random   {:l (- width 150) :t 25 :w 50 :h 50 :icon "btn_random.png"   :on-click #(core/load-random-puzzle (:type puzzle))}
-       :settings {:l (- width  75) :t 25 :w 50 :h 50 :icon "btn_settings.png" :on-click #(reset! core/*screen [:settings])}})
+       :settings {:l (- width  75) :t 25 :w 50 :h 50 :icon "btn_settings.png" :on-click #(core/navigate [:settings])}})
 
     (set! phase :init)
     (set! field-w (parse-long fw))
@@ -340,34 +338,34 @@
 
     ;; Draw notes
     (let [[sa-x sa-y] safe-area]
-        (doseq [stroke notes
-                [dx dy mode] [[2 2 :shadow] [0 0 :stroke]]
-                :let [t         (:tool stroke)
-                      points    (:points stroke)
-                      nth-point #(let [[x y] (aget points %)]
-                                   [(+ x sa-x dx) (+ y sa-y dy)])]]
-          (when (seq points)
-            (set! (.-lineWidth notes-ctx) (case t :eraser 40 6))
-            (set! (.-strokeStyle notes-ctx)
-              (cond
-                (= :eraser t)    "#000"
-                (= :shadow mode) "#00000080"
-                :else            (get tool-colors t)))
-            (set! (.-lineCap notes-ctx) "round")
-            (set! (.-lineJoin notes-ctx) "round")
-            (set! (.-globalCompositeOperation notes-ctx) (case t :eraser "destination-out" "source-over"))
-            (.beginPath notes-ctx)
-            (let [[x y] (nth-point 0)]
-              (.moveTo notes-ctx x y))
-            (dotimes [i (dec (count points))]
-              (let [[x1 y1] (nth-point i)
-                    [x2 y2] (nth-point (inc i))]
-                (.quadraticCurveTo notes-ctx x1 y1 (/ (+ x1 x2) 2) (/ (+ y1 y2) 2))))
-            (let [[x y] (nth-point (dec (count points)))]
-              (.lineTo notes-ctx x y))
+      (doseq [stroke notes
+              [dx dy mode] [[2 2 :shadow] [0 0 :stroke]]
+              :let [t         (:tool stroke)
+                    points    (:points stroke)
+                    nth-point #(let [[x y] (aget points %)]
+                                 [(+ x sa-x dx) (+ y sa-y dy)])]]
+        (when (seq points)
+          (set! (.-lineWidth notes-ctx) (case t :eraser 40 6))
+          (set! (.-strokeStyle notes-ctx)
+            (cond
+              (= :eraser t)    "#000"
+              (= :shadow mode) "#00000080"
+              :else            (get tool-colors t)))
+          (set! (.-lineCap notes-ctx) "round")
+          (set! (.-lineJoin notes-ctx) "round")
+          (set! (.-globalCompositeOperation notes-ctx) (case t :eraser "destination-out" "source-over"))
+          (.beginPath notes-ctx)
+          (let [[x y] (nth-point 0)]
+            (.moveTo notes-ctx x y))
+          (dotimes [i (dec (count points))]
+            (let [[x1 y1] (nth-point i)
+                  [x2 y2] (nth-point (inc i))]
+              (.quadraticCurveTo notes-ctx x1 y1 (/ (+ x1 x2) 2) (/ (+ y1 y2) 2))))
+          (let [[x y] (nth-point (dec (count points)))]
+            (.lineTo notes-ctx x y))
 
-            (.stroke notes-ctx)
-            (set! (.-globalCompositeOperation notes-ctx) "source-over"))))
+          (.stroke notes-ctx)
+          (set! (.-globalCompositeOperation notes-ctx) "source-over"))))
 
     ;; Eraser cursor
     (when (and drag-x drag-y
@@ -392,18 +390,18 @@
 
     ;; End game screen
     (when (#{:game-over :victory} phase)
-        (set! (.-fillStyle overlay-ctx) "#07294798")
-        (.fillRect overlay-ctx 0 (+ grid-y (quot (- grid-h 90) 2)) canvas-w 90)
-        (set! (.-font overlay-ctx) "bold 40px font")
-        (set! (.-textAlign overlay-ctx) "center")
-        (set! (.-textBaseline overlay-ctx) "middle")
-        (set! (.-fillStyle overlay-ctx) "#FFF")
-        (.fillText overlay-ctx (case phase :game-over "Game Over :(" :victory "Victory!")
-          (+ grid-x (quot grid-w 2)) (+ grid-y (quot grid-h 2))))
+      (set! (.-fillStyle overlay-ctx) "#07294798")
+      (.fillRect overlay-ctx 0 (+ grid-y (quot (- grid-h 90) 2)) canvas-w 90)
+      (set! (.-font overlay-ctx) "bold 40px font")
+      (set! (.-textAlign overlay-ctx) "center")
+      (set! (.-textBaseline overlay-ctx) "middle")
+      (set! (.-fillStyle overlay-ctx) "#FFF")
+      (.fillText overlay-ctx (case phase :game-over "Game Over :(" :victory "Victory!")
+        (+ grid-x (quot grid-w 2)) (+ grid-y (quot grid-h 2))))
 
     ;; Animation
     (when (< anim-progress 1)
-      (js/requestAnimationFrame #(core/render)))))
+      (core/request-render))))
 
 (defn field-comparator [[key value]]
   (let [[x y] (parse-key key)]
@@ -769,6 +767,7 @@
 
 (assoc! core/screens :game
   {:on-enter        on-enter
+   :on-reenter      update-field
    :on-resize       on-resize
    :on-render       on-render
    :on-key-down     on-key-down
