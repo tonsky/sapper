@@ -9,8 +9,7 @@
   (set! types (->> core/puzzles-by-type keys sort))
   (let [[left top width height] core/safe-area]
     (set! buttons
-      [{:l (- width 75) :t 25 :w 50 :h 50 :icon "btn_settings.png" :on-click #(core/navigate [:settings])}])
-
+      [{:l (- width 60) :t 10 :w 50 :h 50 :icon "btn_settings.png" :on-click #(core/navigate [:settings])}])
     (let [cols           4
           rows           (-> (dec (count types)) (quot cols) inc)
           btn-w          (-> width (- 50) (- (* 20 (dec cols))) (/ cols))
@@ -26,8 +25,16 @@
                                     (core/navigate [:level-select type]))})))))
 
 (defn on-render []
-  (doseq [b buttons]
-    (core/button-render b)))
+  (let [[sa-left sa-top sa-width _] core/safe-area]
+    (doseq [b buttons]
+      (core/button-render b))
+
+    ;; Title
+    (set! (.-font ctx) "bold 24px font")
+    (set! (.-textAlign ctx) "center")
+    (set! (.-textBaseline ctx) "middle")
+    (set! (.-fillStyle ctx) "#FFF")
+    (.fillText ctx "1 Minesweeper Variant" (+ sa-left (quot sa-width 2)) (+ sa-top 35))))
 
 (defn on-pointer-move [e]
   (doseq [b buttons]

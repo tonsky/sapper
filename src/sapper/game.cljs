@@ -173,11 +173,11 @@
         len              (count code)]
 
     (set! buttons
-      {:back     {:l  25           :t 25 :w 50 :h 50 :icon "btn_back.png"     :on-click #(core/navigate [:level-select (:type puzzle)])}
-       :restart  {:l (- width 300) :t 25 :w 50 :h 50 :icon "btn_restart.png"  :on-click restart}
-       :finish   {:l (- width 225) :t 25 :w 50 :h 50 :icon "btn_finish.png"   :on-click auto-finish :disabled true}
-       :random   {:l (- width 150) :t 25 :w 50 :h 50 :icon "btn_random.png"   :on-click #(core/load-random-puzzle (:type puzzle))}
-       :settings {:l (- width  75) :t 25 :w 50 :h 50 :icon "btn_settings.png" :on-click #(core/navigate [:settings])}})
+      {:back     {:l  10           :t 10 :w 50 :h 50 :icon "btn_back.png"     :on-click #(core/navigate [:level-select (:type puzzle)])}
+       :random   {:l (- width 120) :t 10 :w 50 :h 50 :icon "btn_random.png"   :on-click #(core/load-random-puzzle (:type puzzle))}
+       :settings {:l (- width  60) :t 10 :w 50 :h 50 :icon "btn_settings.png" :on-click #(core/navigate [:settings])}
+       :restart  {:l (- width 120) :t 70 :w 50 :h 50 :icon "btn_restart.png"  :on-click restart}
+       :finish   {:l (- width  60) :t 70 :w 50 :h 50 :icon "btn_finish.png"   :on-click auto-finish :disabled true}})
 
     (set! phase :init)
     (set! field-w (parse-long fw))
@@ -216,16 +216,18 @@
     (set! anim-start (js/Date.now))))
 
 (defn on-render []
-  (let [anim-progress     (core/clamp (/ (- (js/Date.now) anim-start) anim-length) 0 1)
-        [hover-x hover-y] (when (and drag-x drag-y)
-                            (field-coords drag-x drag-y))
-        id                (:id puzzle)
-        rng               (core/make-rng (js/parseInt (str/join (re-seq #"\d" id))))]
-    ;; level name
-    (set! (.-font ctx) "10px font")
-    (set! (.-textAlign ctx) "left")
-    (set! (.-fillStyle ctx) "#477397")
-    (.fillText ctx id 13 47)
+  (let [[sa-left sa-top sa-width _] safe-area
+        anim-progress               (core/clamp (/ (- (js/Date.now) anim-start) anim-length) 0 1)
+        [hover-x hover-y]           (when (and drag-x drag-y)
+                                      (field-coords drag-x drag-y))
+        id                          (:id puzzle)
+        rng                         (core/make-rng (js/parseInt (str/join (re-seq #"\d" id))))]
+    ;; Title
+    (set! (.-font ctx) "bold 24px font")
+    (set! (.-textAlign ctx) "center")
+    (set! (.-textBaseline ctx) "middle")
+    (set! (.-fillStyle ctx) "#FFF")
+    (.fillText ctx id (+ sa-left (quot sa-width 2)) (+ sa-top 35))
 
     ;; buttons
     (doseq [b (vals buttons)]
@@ -337,35 +339,34 @@
         (.drawImage ctx img (- x tool-margin) (- y tool-margin) sprite-size sprite-size)))
 
     ;; Draw notes
-    (let [[sa-x sa-y] safe-area]
-      (doseq [stroke notes
-              [dx dy mode] [[2 2 :shadow] [0 0 :stroke]]
-              :let [t         (:tool stroke)
-                    points    (:points stroke)
-                    nth-point #(let [[x y] (aget points %)]
-                                 [(+ x sa-x dx) (+ y sa-y dy)])]]
-        (when (seq points)
-          (set! (.-lineWidth notes-ctx) (case t :eraser 40 6))
-          (set! (.-strokeStyle notes-ctx)
-            (cond
-              (= :eraser t)    "#000"
-              (= :shadow mode) "#00000080"
-              :else            (get tool-colors t)))
-          (set! (.-lineCap notes-ctx) "round")
-          (set! (.-lineJoin notes-ctx) "round")
-          (set! (.-globalCompositeOperation notes-ctx) (case t :eraser "destination-out" "source-over"))
-          (.beginPath notes-ctx)
-          (let [[x y] (nth-point 0)]
-            (.moveTo notes-ctx x y))
-          (dotimes [i (dec (count points))]
-            (let [[x1 y1] (nth-point i)
-                  [x2 y2] (nth-point (inc i))]
-              (.quadraticCurveTo notes-ctx x1 y1 (/ (+ x1 x2) 2) (/ (+ y1 y2) 2))))
-          (let [[x y] (nth-point (dec (count points)))]
-            (.lineTo notes-ctx x y))
+    (doseq [stroke notes
+            [dx dy mode] [[2 2 :shadow] [0 0 :stroke]]
+            :let [t         (:tool stroke)
+                  points    (:points stroke)
+                  nth-point #(let [[x y] (aget points %)]
+                               [(+ x sa-left dx) (+ y sa-top dy)])]]
+      (when (seq points)
+        (set! (.-lineWidth notes-ctx) (case t :eraser 40 6))
+        (set! (.-strokeStyle notes-ctx)
+          (cond
+            (= :eraser t)    "#000"
+            (= :shadow mode) "#00000080"
+            :else            (get tool-colors t)))
+        (set! (.-lineCap notes-ctx) "round")
+        (set! (.-lineJoin notes-ctx) "round")
+        (set! (.-globalCompositeOperation notes-ctx) (case t :eraser "destination-out" "source-over"))
+        (.beginPath notes-ctx)
+        (let [[x y] (nth-point 0)]
+          (.moveTo notes-ctx x y))
+        (dotimes [i (dec (count points))]
+          (let [[x1 y1] (nth-point i)
+                [x2 y2] (nth-point (inc i))]
+            (.quadraticCurveTo notes-ctx x1 y1 (/ (+ x1 x2) 2) (/ (+ y1 y2) 2))))
+        (let [[x y] (nth-point (dec (count points)))]
+          (.lineTo notes-ctx x y))
 
-          (.stroke notes-ctx)
-          (set! (.-globalCompositeOperation notes-ctx) "source-over"))))
+        (.stroke notes-ctx)
+        (set! (.-globalCompositeOperation notes-ctx) "source-over")))
 
     ;; Eraser cursor
     (when (and drag-x drag-y
@@ -667,10 +668,10 @@
     (core/button-on-pointer-move b e))
 
   (when (and (#{:mouse-left :mouse-right :touch} device) tool (seq notes))
-    (let [[sa-x sa-y] safe-area
+    (let [[sa-left sa-top] safe-area
           points      (:points (last notes))
-          rel-x       (- x sa-x)
-          rel-y       (- y sa-y)
+          rel-x       (- x sa-left)
+          rel-y       (- y sa-top)
           num-points  (count points)]
       (if (and
             (>= num-points 2)

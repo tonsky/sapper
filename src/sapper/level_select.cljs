@@ -15,9 +15,9 @@
     (set! type t)
     (set! statuses (core/puzzle-statuses t))
     (set! buttons
-      [{:l  25           :t 25 :w 50 :h 50 :icon "btn_back.png"     :on-click #(core/navigate [:menu])}
-       {:l (- width 150) :t 25 :w 50 :h 50 :icon "btn_random.png"   :on-click #(core/load-random-puzzle type)}
-       {:l (- width  75) :t 25 :w 50 :h 50 :icon "btn_settings.png" :on-click #(core/navigate [:settings])}])
+      [{:l 10            :t 10 :w 50 :h 50 :icon "btn_back.png"     :on-click #(core/navigate [:menu])}
+       {:l (- width 120) :t 10 :w 50 :h 50 :icon "btn_random.png"   :on-click #(core/load-random-puzzle type)}
+       {:l (- width  60) :t 10 :w 50 :h 50 :icon "btn_settings.png" :on-click #(core/navigate [:settings])}])
     (core/sync-history t
       (fn [lines]
         (let [parsed (keep #(core/parse-history-line t %) lines)]
@@ -25,62 +25,69 @@
           (core/request-render))))))
 
 (defn on-render []
-  (doseq [b buttons]
-    (core/button-render b))
+  (let [[sa-left sa-top sa-width sa-height] core/safe-area]
+    (doseq [b buttons]
+      (core/button-render b))
 
-  ;; puzzles
-  (let [[left top width _] core/safe-area
-        puzzles (get core/puzzles-by-type type)
-        {:keys [won lost started]} statuses
-        img     (get core/images "level_select.png")
-        rng     (core/make-rng (js/parseInt (subs type 3 4)))]
-    (doseq [[i puzzle] (core/indexed puzzles)
-            :let [_            (core/advance-rng rng)
-                  x            (mod i 18)
-                  y            (quot i 18)
-                  hover?       (= hover-idx i)
-                  {:keys [id]} puzzle
-                  sprite-left  (cond
-                                 (and hover? (contains? won id))     700
-                                 (contains? won id)                  600
-                                 (and hover? (contains? lost id))    500
-                                 (contains? lost id)                 400
-                                 (and hover? (contains? started id)) 300
-                                 (contains? started id)              200
-                                 hover?                              100
-                                 :else                               0)
-                  sprite-top   (if (= @core/*last-puzzle-id id)
-                                 500
-                                 (-> (core/random rng) (* 5) js/Math.floor (* 100)))]]
-      (when (< (+ (* y 18) x) (count puzzles))
-        (.drawImage ctx img
-          sprite-left sprite-top 100 100
-          (+ left 20 (* x 30) -10)
-          (+  top 100 (* y 30) -10) 50 50)))
-
-    ;; progress
-    (set! (.-font ctx) "16px font")
-    (set! (.-textAlign ctx) "left")
+    ;; Title
+    (set! (.-font ctx) "bold 24px font")
+    (set! (.-textAlign ctx) "center")
     (set! (.-textBaseline ctx) "middle")
     (set! (.-fillStyle ctx) "#FFF")
-    (let [won    (count (:won statuses))
-          total  (count puzzles)
-          pct    (-> won (/ total) (* 100) js/Math.round)
-          text   (str won " / " total " (" pct "%)")
-          text-w (:width (.measureText ctx text))
-          left   (-> left (+ (quot width 2)) (- (quot text-w 2)))]
-      (.fillText ctx text left (+ top 50))
+    (.fillText ctx type (+ sa-left (quot sa-width 2)) (+ sa-top 35))
 
-      (set! (.-fillStyle ctx) "#2E4D6F")
-      (.fillRect ctx left (+ top 62) text-w 3)
-      (set! (.-fillStyle ctx) "#4FCD6F")
-      (.fillRect ctx left (+ top 62) (-> text-w (* (/ won total)) js/Math.round) 3))))
+    ;; puzzles
+    (let [puzzles (get core/puzzles-by-type type)
+          {:keys [won lost started]} statuses
+          img     (get core/images "level_select.png")
+          rng     (core/make-rng (js/parseInt (subs type 3 4)))]
+      (doseq [[i puzzle] (core/indexed puzzles)
+              :let [_            (core/advance-rng rng)
+                    x            (mod i 18)
+                    y            (quot i 18)
+                    hover?       (= hover-idx i)
+                    {:keys [id]} puzzle
+                    sprite-left  (cond
+                                   (and hover? (contains? won id))     700
+                                   (contains? won id)                  600
+                                   (and hover? (contains? lost id))    500
+                                   (contains? lost id)                 400
+                                   (and hover? (contains? started id)) 300
+                                   (contains? started id)              200
+                                   hover?                              100
+                                   :else                               0)
+                    sprite-top   (if (= @core/*last-puzzle-id id)
+                                   500
+                                   (-> (core/random rng) (* 5) js/Math.floor (* 100)))]]
+        (when (< (+ (* y 18) x) (count puzzles))
+          (.drawImage ctx img
+            sprite-left sprite-top 100 100
+            (+ sa-left  20 (* x 30) -10)
+            (+ sa-top  140 (* y 30) -10) 50 50)))
+
+      ;; progress
+      (set! (.-font ctx) "16px font")
+      (set! (.-textAlign ctx) "left")
+      (set! (.-textBaseline ctx) "middle")
+      (set! (.-fillStyle ctx) "#FFF")
+      (let [won    (count (:won statuses))
+            total  (count puzzles)
+            pct    (-> won (/ total) (* 100) js/Math.round)
+            text   (str won " / " total " (" pct "%)")
+            text-w (:width (.measureText ctx text))
+            left   (-> sa-left (+ (quot sa-width 2)) (- (quot text-w 2)))]
+        (.fillText ctx text left (+ sa-top sa-height -40))
+
+        (set! (.-fillStyle ctx) "#2E4D6F")
+        (.fillRect ctx left (+ sa-top sa-height -25) text-w 3)
+        (set! (.-fillStyle ctx) "#4FCD6F")
+        (.fillRect ctx left (+ sa-top sa-height -25) (-> text-w (* (/ won total)) js/Math.round) 3)))))
 
 (defn mouse->idx [x y]
   (let [[left top _ _] core/safe-area]
-    (when (core/inside? x y (+ left 20)(+ top 100) (* 30 18) (* 30 23))
+    (when (core/inside? x y (+ left 20)(+ top 140) (* 30 18) (* 30 23))
       (let [gx      (quot (- x left 20) 30)
-            gy      (quot (- y top 100) 30)
+            gy      (quot (- y top 140) 30)
             i       (+ (* gy 18) gx)
             puzzles (get core/puzzles-by-type type)]
         (when (< i (count puzzles))

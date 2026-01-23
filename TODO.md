@@ -1,4 +1,3 @@
-- [ ] Screen titles
 - [ ] Open animation
 - [ ] Sync settings
 - [ ] Store last level state and notes
@@ -9,6 +8,7 @@
 - [ ] Try highlighting cells instead of outline
 - [ ] New id button
 - [ ] Reset progress button
+- [x] Screen titles
 - [x] History API-based navigation
 - [x] requestAnimationFrame rendering
 - [x] Fix auto-open in classic mode

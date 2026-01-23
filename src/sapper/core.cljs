@@ -55,21 +55,6 @@
   (.clearRect ctx 0 0 canvas-w canvas-h)
   (.clearRect notes-ctx 0 0 canvas-w canvas-h)
   (.clearRect overlay-ctx 0 0 canvas-w canvas-h)
-
-  ;; safe area
-  (let [[l t w h] safe-area]
-    (set! (.-fillStyle ctx) "#103050")
-    (.beginPath ctx)
-    (.roundRect ctx l t w h 4)
-    (.fill ctx))
-
-  ;; viewport size
-  (set! (.-font ctx) "10px font")
-  (set! (.-fillStyle ctx) "#477397")
-  (set! (.-textAlign ctx) "left")
-  (.fillText ctx (str canvas-w "×" canvas-h "@" canvas-scale) 13 23)
-  (.fillText ctx @*sync-id 13 35)
-
   (call-screen-fn-impl (or screen @*screen) :on-render))
 
 ;; UTILS
