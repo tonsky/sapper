@@ -1,3 +1,5 @@
+- [ ] Use data structure to store field
+- [ ] Pre-calc mines and flags
 - [ ] Open animation
 - [ ] Sync settings
 - [ ] Store last level state and notes
@@ -8,6 +10,7 @@
 - [ ] New id button
 - [ ] Reset progress button
 - [ ] Show progress on main screen
+- [x] Live reload server
 - [x] Translate canvas so that safe area becomes 0, 0
 - [x] Screen titles
 - [x] History API-based navigation

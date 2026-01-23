@@ -5,7 +5,7 @@
   "main": "public/main.mjs",
   "scripts": {
     "watch": "pnpm exec squint watch",
-    "serve": "pnpm exec http-server public -p 8000 -c-1",
+    "serve": "pnpm live-server --port=8000 --no-browser public/",
     "dev": "concurrently \"pnpm watch\" \"pnpm serve\""
   },
   "keywords": [],
@@ -14,7 +14,7 @@
   "packageManager": "pnpm@10.28.1",
   "devDependencies": {
     "concurrently": "^9.2.1",
-    "http-server": "^14.1.1"
+    "live-server": "^1.2.2"
   },
   "dependencies": {
     "squint-cljs": "link:/Users/tonsky/ws/squint"
