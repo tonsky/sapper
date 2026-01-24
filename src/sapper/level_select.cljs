@@ -3,7 +3,7 @@
    [clojure.string :as str]
    [sapper.core :as core :refer [ctx safe-w safe-h]])
   (:require-macros
-   [sapper.macros :refer [defn-log cond+]]))
+   [sapper.macros :refer [cond+]]))
 
 (def statuses)
 (def hover-idx nil)

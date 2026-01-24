@@ -1,6 +1,4 @@
 - [ ] Abstract away canvas operations
-- [ ] Shuffle auto-open
-- [ ] Pre-calc mines and flags
 - [ ] Open animation
 - [ ] Sync settings
 - [ ] Store last level state and notes
@@ -10,6 +8,7 @@
 - [ ] New id button
 - [ ] Reset progress button
 - [ ] Show progress on main screen
+- [x] Shuffle auto-open
 - [x] Store :mines and :flags in field, don't store :label
 - [x] Use class to store field
 - [x] Migrate game.cljs drag-x/y to core/pointer-xy

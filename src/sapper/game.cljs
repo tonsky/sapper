@@ -541,7 +541,7 @@
   (loop [queue auto-open-queue]
     (if-some [pos (first queue)]
       (if-some [[op nbs] (can-auto-open pos)]
-        (let [[npos & _] nbs
+        (let [npos          (rand-nth nbs)
               old-set       (set (map js/JSON.stringify auto-open-queue))
               all-new-nbs   (remove #(contains? old-set (js/JSON.stringify %)) (neighbours npos))]
           (case op

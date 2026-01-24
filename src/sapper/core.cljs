@@ -3,7 +3,7 @@
    [clojure.string :as str]
    [sapper.wake-lock :as wake-lock])
   (:require-macros
-   [sapper.macros :refer [defn-log cond+]]))
+   [sapper.macros :refer [cond+]]))
 
 (def canvas nil)
 (def ctx nil)
@@ -129,7 +129,7 @@
 
 ;; Resources
 
-(defn-log load-resources [cb]
+(defn load-resources [cb]
   (let [t0        (js/Date.now)
         resources (into
                     #{"btn_back.png" "btn_random.png" "btn_settings.png"
