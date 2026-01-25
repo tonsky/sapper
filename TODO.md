@@ -1,3 +1,4 @@
+- [ ] No animated queues after game over
 - [ ] Abstract away canvas operations
 - [ ] Open animation
 - [ ] Sync settings

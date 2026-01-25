@@ -622,10 +622,9 @@
             (set! tool nil)
             (core/request-render))
 
-          (and outline-x outline-y)
+          outline-pos
           (do
-            (set! outline-x nil)
-            (set! outline-y nil)
+            (set! outline-pos nil)
             (core/request-render)))))))
 
 (defn on-pointer-down [{:keys [x y device]}]
