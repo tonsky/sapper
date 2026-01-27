@@ -652,6 +652,10 @@
       (= "r" key)
       (restart)
 
+      (= "f" key)
+      (when-some [pos (coord->pos [core/pointer-x core/pointer-y])]
+        (flag-cell pos))
+
       (= "Escape" key)
       (do
         (cond

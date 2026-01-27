@@ -1,4 +1,3 @@
-- [ ] F to flag
 - [ ] Hints
 - [ ] Abstract away canvas operations
 - [ ] Open animation
@@ -10,6 +9,7 @@
 - [ ] New id button
 - [ ] Reset progress button
 - [ ] Show progress on main screen
+- [x] F to flag
 - [x] Option: Check flags
 - [x] Option: Finish solved cells on click
 - [x] No animated opens after game over
