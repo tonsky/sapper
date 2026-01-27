@@ -430,6 +430,9 @@
         expert? (:expert @core/*settings)]
 
     (cond+
+      (#{:game-over :victory} phase)
+      :noop
+
       open
       :noop
 
@@ -503,15 +506,25 @@
   (let [cell (get-cell pos)
         {:keys [flagged open]} cell]
     (cond
-      open         :noop
-      flagged      (do
-                     (assoc! cell :flagged false)
-                     (update-field))
-      (<= flags 0) :noop
-      :else        (do
-                     #_(println (- (js/Date.now) t0) "flag" gx gy)
-                     (assoc! cell :flagged true)
-                     (update-field)))))
+      (#{:game-over :victory} phase)
+      :noop
+
+      open
+      :noop
+
+      flagged
+      (do
+        (assoc! cell :flagged false)
+        (update-field))
+
+      (<= flags 0)
+      :noop
+
+      :else
+      (do
+        #_(println (- (js/Date.now) t0) "flag" gx gy)
+        (assoc! cell :flagged true)
+        (update-field)))))
 
 (defn auto-finish []
   (when-some [action (can-auto-finish?)]
