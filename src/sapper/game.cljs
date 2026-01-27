@@ -421,6 +421,14 @@
     (when (< anim-progress 1)
       (core/request-render))))
 
+(defn solve [cell-fn]
+  (let [problem     (str/join
+                      (for [y (range (.-height field))
+                            x (range (.-width field))]
+                        (cell-fn [x y] (.get field [x y]))))
+        total-flags (count (filter :mine (.vals field)))]
+    (solver/solve (.-width field) (.-height field) total-flags problem)))
+
 (defn open-cell [pos]
   (when (= :new phase)
     (set! phase :play)
@@ -455,29 +463,22 @@
         (when (:auto-open-recursive @core/*settings)
           (maybe-auto-open pos)))
 
-      :let [problem-with-flags    (str/join
-                                    (for [y (range (.-height field))
-                                          x (range (.-width field))
-                                          :let [{:keys [open flagged secret mines]} (.get field [x y])]]
-                                      (cond
-                                        flagged       "F"
-                                        (= [x y] pos) "F"
-                                        (not open)    "."
-                                        secret        "?"
-                                        :else         (str mines))))
-            problem-without-flags (str/join
-                                    (for [y (range (.-height field))
-                                          x (range (.-width field))
-                                          :let [{:keys [open flagged secret mines]} (.get field [x y])]]
-                                      (cond
-                                        (= [x y] pos) "F"
-                                        (not open)    "."
-                                        secret        "?"
-                                        :else         (str mines))))
-            total-flags           (count (filter :mine (.vals field)))
-            counterexample        (or
-                                    (solver/solve (.-width field) (.-height field) total-flags problem-with-flags)
-                                    (solver/solve (.-width field) (.-height field) total-flags problem-without-flags))]
+      :let [with-flags    (fn [[x y] {:keys [open flagged secret mines]}]
+                            (cond
+                              flagged       "F"
+                              (= pos [x y]) "F"
+                              (not open)    "."
+                              secret        "?"
+                              :else         (str mines)))
+            without-flags (fn [[x y] {:keys [open flagged secret mines]}]
+                            (cond
+                              (= pos [x y]) "F"
+                              (not open)    "."
+                              secret        "?"
+                              :else         (str mines)))
+            counterexample (or
+                             (solve with-flags)
+                             (solve without-flags))]
 
       counterexample
       (do
@@ -524,18 +525,14 @@
         (assoc! cell :flagged true)
         (update-field))
 
-      :let [problem (str/join
-                      (for [y (range (.-height field))
-                            x (range (.-width field))
-                            :let [{:keys [open flagged secret mines]} (.get field [x y])]]
-                        (cond
-                          (= [x y] pos) "?"
-                          flagged       "F"
-                          (not open)    "."
-                          secret        "?"
-                          :else         (str mines))))
-            total-flags    (count (filter :mine (.vals field)))
-            counterexample (solver/solve (.-width field) (.-height field) total-flags problem)]
+      :let [counterexample (solve
+                             (fn [[x y] {:keys [open flagged secret mines]}]
+                               (cond
+                                 (= pos [x y]) "?"
+                                 flagged       "F"
+                                 (not open)    "."
+                                 secret        "?"
+                                 :else         (str mines))))]
 
       counterexample
       (do
