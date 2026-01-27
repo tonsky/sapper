@@ -455,49 +455,48 @@
         (when (:auto-open-recursive @core/*settings)
           (maybe-auto-open pos)))
 
-      :else
-      (let [problem-with-flags
-            (str/join
-              (for [y (range (.-height field))
-                    x (range (.-width field))
-                    :let [{:keys [open flagged secret mines]} (.get field [x y])]]
-                (cond
-                  flagged       "F"
-                  (= [x y] pos) "F"
-                  (not open)    "."
-                  secret        "?"
-                  :else         (str mines))))
-            problem-without-flags
-            (str/join
-              (for [y (range (.-height field))
-                    x (range (.-width field))
-                    :let [{:keys [open flagged secret mines]} (.get field [x y])]]
-                (cond
-                  (= [x y] pos) "F"
-                  (not open)    "."
-                  secret        "?"
-                  :else         (str mines))))
-            total-flags
-            (count (filter :mine (.vals field)))]
+      :let [problem-with-flags    (str/join
+                                    (for [y (range (.-height field))
+                                          x (range (.-width field))
+                                          :let [{:keys [open flagged secret mines]} (.get field [x y])]]
+                                      (cond
+                                        flagged       "F"
+                                        (= [x y] pos) "F"
+                                        (not open)    "."
+                                        secret        "?"
+                                        :else         (str mines))))
+            problem-without-flags (str/join
+                                    (for [y (range (.-height field))
+                                          x (range (.-width field))
+                                          :let [{:keys [open flagged secret mines]} (.get field [x y])]]
+                                      (cond
+                                        (= [x y] pos) "F"
+                                        (not open)    "."
+                                        secret        "?"
+                                        :else         (str mines))))
+            total-flags           (count (filter :mine (.vals field)))
+            counterexample        (or
+                                    (solver/solve (.-width field) (.-height field) total-flags problem-with-flags)
+                                    (solver/solve (.-width field) (.-height field) total-flags problem-without-flags))]
 
-        (if-some [counterexample (or
-                                   (solver/solve (.-width field) (.-height field) total-flags problem-with-flags)
-                                   (solver/solve (.-width field) (.-height field) total-flags problem-without-flags))]
-          (do
-            #_(println "yes" counterexample)
-            (doseq [[[x y] cell] (.seq field)]
-              (assoc! cell :mine (= "F" (aget counterexample (+ (* y (.-width field)) x)))))
-            (set! exploded-pos pos)
-            #_(update-field)
-            (core/append-history (:id puzzle) :lose)
-            (set! phase :game-over)
-            (core/request-render))
-          (do
-            #_(println "no" field)
-            (assoc! (.get field pos) :open true)
-            (update-field)
-            (when (:auto-open-recursive @core/*settings)
-              (maybe-auto-open pos))))))))
+      counterexample
+      (do
+        #_(println "yes" counterexample)
+        (doseq [[[x y] cell] (.seq field)]
+          (assoc! cell :mine (= "F" (aget counterexample (+ (* y (.-width field)) x)))))
+        (set! exploded-pos pos)
+        #_(update-field)
+        (core/append-history (:id puzzle) :lose)
+        (set! phase :game-over)
+        (core/request-render))
+
+      :else
+      (do
+        #_(println "no" field)
+        (assoc! (.get field pos) :open true)
+        (update-field)
+        (when (:auto-open-recursive @core/*settings)
+          (maybe-auto-open pos))))))
 
 (defn flag-cell [pos]
   (when (= :new phase)
@@ -505,7 +504,7 @@
     (core/append-history (:id puzzle) :start))
   (let [cell (get-cell pos)
         {:keys [flagged open]} cell]
-    (cond
+    (cond+
       (#{:game-over :victory} phase)
       :noop
 
@@ -520,9 +519,35 @@
       (<= flags 0)
       :noop
 
+      (not (:check-flags @core/*settings))
+      (do
+        (assoc! cell :flagged true)
+        (update-field))
+
+      :let [problem (str/join
+                      (for [y (range (.-height field))
+                            x (range (.-width field))
+                            :let [{:keys [open flagged secret mines]} (.get field [x y])]]
+                        (cond
+                          (= [x y] pos) "?"
+                          flagged       "F"
+                          (not open)    "."
+                          secret        "?"
+                          :else         (str mines))))
+            total-flags    (count (filter :mine (.vals field)))
+            counterexample (solver/solve (.-width field) (.-height field) total-flags problem)]
+
+      counterexample
+      (do
+        (assoc! cell :flagged true)
+        (doseq [[[x y] cell] (.seq field)]
+          (assoc! cell :mine (= "F" (aget counterexample (+ (* y (.-width field)) x)))))
+        (core/append-history (:id puzzle) :lose)
+        (set! phase :game-over)
+        (core/request-render))
+
       :else
       (do
-        #_(println (- (js/Date.now) t0) "flag" gx gy)
         (assoc! cell :flagged true)
         (update-field)))))
 

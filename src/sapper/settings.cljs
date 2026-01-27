@@ -54,31 +54,37 @@
     :else
     (js/history.back)))
 
-(defn on-enter [_]
-  (set! buttons
-    {:close  {:l (- safe-w 60) :t  10 :w  50 :h 50 :icon "btn_close.png" :on-click close}
-     :copy   {:l 200           :t 555 :w  80 :h 50 :text "Copy"          :on-click on-sync-id-copy}
-     :paste  {:l 290           :t 555 :w  80 :h 50 :text "Paste"         :on-click on-sync-id-paste}
-     :reload {:l 200           :t 725 :w 120 :h 50 :text "Reload app"    :on-click reload}})
+(def toggles-top
+  175)
 
+(def sync-top)
+
+(defn on-enter [_]
   (set! toggles
     (into {}
       (for [[i [key text]] (core/indexed
                              (partition 2
                                [:keep-awake          "Keep device awake"
                                 :expert              "Expert mode"
-                                :modern              "Flags reduce counter"
+                                :modern              "Flags reduce counters"
+                                :check-flags         "Check flags"
                                 :auto-open-click     "Finish solved cells on click"
                                 :auto-open-recursive "Recursively finish cells"]))]
         [key {:l         200
-              :t         (+ 200 (* i 50))
+              :t         (+ toggles-top (* i 50))
               :get-value #(get @core/*settings key)
               :set-value #(do
                             (swap! core/*settings assoc key %)
                             (when (= :auto-open-click key)
                               (assoc! (:auto-open-recursive toggles) :disabled (not %))))
               :text      text}])))
-  (assoc! (:auto-open-recursive toggles) :disabled (not (:auto-open-click @core/*settings))))
+  (assoc! (:auto-open-recursive toggles) :disabled (not (:auto-open-click @core/*settings)))
+  (set! sync-top (+ toggles-top (* (count toggles) 50) 45))
+  (set! buttons
+    {:close  {:l (- safe-w 60) :t 10               :w  50 :h 50 :icon "btn_close.png" :on-click close}
+     :copy   {:l 200           :t (+ sync-top  60) :w  80 :h 50 :text "Copy"          :on-click on-sync-id-copy}
+     :paste  {:l 290           :t (+ sync-top  60) :w  80 :h 50 :text "Paste"         :on-click on-sync-id-paste}
+     :reload {:l 200           :t (+ sync-top 230) :w 120 :h 50 :text "Reload app"    :on-click reload}}))
 
 (defn on-render []
   (doseq [[_ b] buttons]
@@ -98,25 +104,25 @@
   (set! (.-textAlign ctx) "left")
   (set! (.-textBaseline ctx) "middle")
   (set! (.-fillStyle ctx) "#fff")
-  (.fillText ctx "Sync ID" 110 520)
+  (.fillText ctx "Sync ID" 110 (+ sync-top 25))
 
   (set! (.-lineWidth ctx) 1)
   (set! (.-strokeStyle ctx) "#2e4d6f")
   (.beginPath ctx)
-  (.roundRect ctx 200 495 230 50 4)
+  (.roundRect ctx 200 sync-top 230 50 4)
   (.stroke ctx)
 
   (.save ctx)
   (.beginPath ctx)
-  (.rect ctx 200 495 230 50)
+  (.rect ctx 200 sync-top 230 50)
   (.clip ctx)
   (set! (.-fillStyle ctx) (if (and sync-message (str/starts-with? sync-message "Invalid: ")) "#ff0000" "#fff"))
-  (.fillText ctx (or sync-message @core/*sync-id) 215 520)
+  (.fillText ctx (or sync-message @core/*sync-id) 215 (+ sync-top 25))
   (.restore ctx)
 
   ;; Viewport size
-  (.fillText ctx "Viewport" 110 665)
-  (.fillText ctx (str (* core/dpi (.-innerWidth js/window)) "×" (* core/dpi (.-innerHeight js/window)) " → " core/canvas-w "×" core/canvas-h "@" core/canvas-scale) 200 665))
+  (.fillText ctx "Viewport" 110 (+ sync-top 170))
+  (.fillText ctx (str (* core/dpi (.-innerWidth js/window)) "×" (* core/dpi (.-innerHeight js/window)) " → " core/canvas-w "×" core/canvas-h "@" core/canvas-scale) 200 (+ sync-top 170)))
 
 (defn on-pointer-move [e]
   (doseq [[_ b] buttons]

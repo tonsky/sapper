@@ -36,7 +36,8 @@
    :modern              true
    :auto-open-click     false
    :auto-open-recursive false
-   :keep-awake          false})
+   :keep-awake          false
+   :check-flags         false})
 
 ;; RENDERING
 
