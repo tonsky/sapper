@@ -298,7 +298,7 @@
                       secret          "#73A2C9"
                       (> flags mines) "#9B2226"
                       solved          "#73A2C9"
-                      (= 0 cnt)       "#006073"
+                      (= 0 cnt)       "#0A9496"
                       (= 1 cnt)       "#0A9496"
                       (= 2 cnt)       "#95D2BD"
                       (= 3 cnt)       "#E9D8A6"
@@ -452,7 +452,7 @@
       (do
         (assoc! cell :open true)
         (update-field)
-        (when (:auto-open @core/*settings)
+        (when (:auto-open-recursive @core/*settings)
           (maybe-auto-open pos)))
 
       :else
@@ -496,7 +496,7 @@
             #_(println "no" field)
             (assoc! (.get field pos) :open true)
             (update-field)
-            (when (:auto-open @core/*settings)
+            (when (:auto-open-recursive @core/*settings)
               (maybe-auto-open pos))))))))
 
 (defn flag-cell [pos]
@@ -560,7 +560,7 @@
           (case op
             :open (open-cell npos)
             :flag (flag-cell npos))
-          (when (:auto-open @core/*settings)
+          (when (:auto-open-recursive @core/*settings)
             (set! auto-open-queue (concat auto-open-queue all-new-nbs)))
           (set! auto-open-timer (js/setTimeout auto-open auto-open-dt)))
         (recur (next queue)))
@@ -573,7 +573,7 @@
     (set! auto-open-timer (js/setTimeout auto-open auto-open-dt))))
 
 (defn maybe-auto-open [pos]
-  (when (can-auto-open pos)
+  (when (and (:auto-open-click @core/*settings) (can-auto-open pos))
     (set! auto-open-queue (conj auto-open-queue pos))
     (request-auto-open)
     true))

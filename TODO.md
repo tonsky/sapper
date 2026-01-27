@@ -1,4 +1,3 @@
-- [ ] Option: Open assist
 - [ ] F to flag
 - [ ] Option: Check on flag
 - [ ] Hints
@@ -12,6 +11,7 @@
 - [ ] New id button
 - [ ] Reset progress button
 - [ ] Show progress on main screen
+- [x] Option: Finish solved cells on click
 - [x] No animated opens after game over
 - [x] New solver with pluggable rules
 - [x] Shuffle auto-open

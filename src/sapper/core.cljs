@@ -32,10 +32,11 @@
 (def *last-puzzle-id (atom nil))
 (def *settings (atom nil))
 (def default-settings
-  {:expert     true
-   :modern     true
-   :auto-open  false
-   :keep-awake false})
+  {:expert              true
+   :modern              true
+   :auto-open-click     false
+   :auto-open-recursive false
+   :keep-awake          false})
 
 ;; RENDERING
 
@@ -236,10 +237,15 @@
 ;; TOGGLES
 
 (defn toggle-render [toggle]
-  (let [{:keys [l t get-value text]} toggle
+  (let [{:keys [l t get-value text disabled]} toggle
         value (get-value)]
     (.drawImage ctx (get images "toggle.png")
-      0 (if value 0 200) 200 200
+      0 (cond
+          (and value       (not disabled)) 0
+          (and (not value) (not disabled)) 200
+          (and value            disabled)  400
+          (and (not value)      disabled)  600)
+      200 200
       (+ l -25) (+ t -25) sprite-size sprite-size)
 
     (set! (.-font ctx) "16px font")
@@ -251,11 +257,12 @@
     (set! (.-w toggle) (+ 50 15 (:width (.measureText ctx text))))))
 
 (defn toggle-on-pointer-up [toggle e]
-  (let [{:keys [l t w get-value set-value]} toggle
+  (let [{:keys [l t w get-value set-value disabled]} toggle
         {:keys [x y start-x start-y]} e]
-    (when (both-inside? x y start-x start-y l t w 50)
-      (set-value (not (get-value)))
-      (request-render))))
+    (when (not disabled)
+      (when (both-inside? x y start-x start-y l t w 50)
+        (set-value (not (get-value)))
+        (request-render)))))
 
 ;; STORAGE
 

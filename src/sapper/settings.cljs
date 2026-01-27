@@ -65,15 +65,20 @@
     (into {}
       (for [[i [key text]] (core/indexed
                              (partition 2
-                               [:keep-awake "Keep device awake"
-                                :expert     "Expert mode"
-                                :modern     "Flags reduce counter"
-                                :auto-open  "Recursive auto-open"]))]
+                               [:keep-awake          "Keep device awake"
+                                :expert              "Expert mode"
+                                :modern              "Flags reduce counter"
+                                :auto-open-click     "Finish solved cells on click"
+                                :auto-open-recursive "Recursively finish cells"]))]
         [key {:l         200
-              :t         (+ 250 (* i 50))
+              :t         (+ 200 (* i 50))
               :get-value #(get @core/*settings key)
-              :set-value #(swap! core/*settings assoc key %)
-              :text      text}]))))
+              :set-value #(do
+                            (swap! core/*settings assoc key %)
+                            (when (= :auto-open-click key)
+                              (assoc! (:auto-open-recursive toggles) :disabled (not %))))
+              :text      text}])))
+  (assoc! (:auto-open-recursive toggles) :disabled (not (:auto-open-click @core/*settings))))
 
 (defn on-render []
   (doseq [[_ b] buttons]
