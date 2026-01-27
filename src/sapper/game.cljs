@@ -453,40 +453,40 @@
           (maybe-auto-open pos)))
 
       :else
-      (let [problem-with-flags {}
-            _ (doseq [[pos' {:keys [open flagged secret mines]}] (.seq field)]
-                (assoc! problem-with-flags (str/join "," pos')
-                  {:open    open
-                   :flagged (if (= pos pos')
-                              true
-                              flagged)
-                   :label   (cond
-                              (not open) nil
-                              secret     "q"
-                              flagged    nil
-                              :else      (str mines))}))
-            problem-without-flags {}
-            _ (doseq [[pos' {:keys [open flagged secret mines]}] (.seq field)]
-                (assoc! problem-without-flags (str/join "," pos')
-                  {:open    open
-                   :flagged (= pos pos')
-                   :label   (cond
-                              (not open) nil
-                              secret     "q"
-                              flagged    nil
-                              :else      (str mines))}))
-            cnt (count (filter :mine (.vals field)))]
+      (let [problem-with-flags
+            (str/join
+              (for [y (range (.-height field))
+                    x (range (.-width field))
+                    :let [{:keys [open flagged secret mines]} (.get field [x y])]]
+                (cond
+                  flagged       "F"
+                  (= [x y] pos) "F"
+                  (not open)    "."
+                  secret        "?"
+                  :else         (str mines))))
+            problem-without-flags
+            (str/join
+              (for [y (range (.-height field))
+                    x (range (.-width field))
+                    :let [{:keys [open flagged secret mines]} (.get field [x y])]]
+                (cond
+                  (= [x y] pos) "F"
+                  (not open)    "."
+                  secret        "?"
+                  :else         (str mines))))
+            total-flags
+            (count (filter :mine (.vals field)))]
 
         (if-some [counterexample (or
-                                   (solver/solve (.-width field) (.-height field) cnt problem-with-flags)
-                                   (solver/solve (.-width field) (.-height field) cnt problem-without-flags))]
+                                   (solver/solve (.-width field) (.-height field) total-flags problem-with-flags)
+                                   (solver/solve (.-width field) (.-height field) total-flags problem-without-flags))]
           (do
             #_(println "yes" counterexample)
-            (doseq [[pos cell] (.seq field)]
-              (assoc! cell :mine (get-in counterexample [(str/join "," pos) :mine] false)))
+            (doseq [[[x y] cell] (.seq field)]
+              (assoc! cell :mine (= "F" (aget counterexample (+ (* y (.-width field)) x)))))
+            (set! exploded-pos pos)
             #_(update-field)
             (core/append-history (:id puzzle) :lose)
-            (set! exploded-pos pos)
             (set! phase :game-over)
             (core/request-render))
           (do

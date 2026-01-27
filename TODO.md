@@ -1,3 +1,7 @@
+- [ ] Option: Open assist
+- [ ] F to flag
+- [ ] Option: Check on flag
+- [ ] Hints
 - [ ] No animated queues after game over
 - [ ] Abstract away canvas operations
 - [ ] Open animation
@@ -9,6 +13,7 @@
 - [ ] New id button
 - [ ] Reset progress button
 - [ ] Show progress on main screen
+- [x] New solver with pluggable rules
 - [x] Shuffle auto-open
 - [x] Store :mines and :flags in field, don't store :label
 - [x] Use class to store field
