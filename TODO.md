@@ -1,4 +1,3 @@
-- [ ] Hints
 - [ ] Abstract away canvas operations
 - [ ] Open animation
 - [ ] Sync settings
@@ -9,6 +8,7 @@
 - [ ] New id button
 - [ ] Reset progress button
 - [ ] Show progress on main screen
+- [x] Hints
 - [x] F to flag
 - [x] Option: Check flags
 - [x] Option: Finish solved cells on click

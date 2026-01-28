@@ -36,6 +36,8 @@
 (def outline-pos nil)
 (def phase)
 (def exploded-pos nil)
+(def hinted-pos nil)
+(def cell-order [])
 (def buttons)
 (def dragging-flag false)
 (def tool nil)
@@ -159,6 +161,7 @@
       {:back     {:l  10            :t 10 :w 50 :h 50 :icon "btn_back.png"     :on-click #(core/navigate [:level-select (:type puzzle)])}
        :random   {:l (- safe-w 120) :t 10 :w 50 :h 50 :icon "btn_random.png"   :on-click #(core/load-random-puzzle (:type puzzle))}
        :settings {:l (- safe-w  60) :t 10 :w 50 :h 50 :icon "btn_settings.png" :on-click #(core/navigate [:settings])}
+       :hint     {:l (- safe-w 180) :t 70 :w 50 :h 50 :icon "btn_hint.png"     :on-click hint}
        :restart  {:l (- safe-w 120) :t 70 :w 50 :h 50 :icon "btn_restart.png"  :on-click restart}
        :finish   {:l (- safe-w  60) :t 70 :w 50 :h 50 :icon "btn_finish.png"   :on-click auto-finish :disabled true}})
 
@@ -185,9 +188,20 @@
       (let [nbs (mapv get-cell (neighbours pos))]
         (assoc! cell :mines (count (filter :mine nbs)))))
 
+    (let [seed      (parse-long (str/replace id #"\D" ""))
+          rng       (core/make-rng seed)
+          all-cells (for [y (range (.-height field))
+                          x (range (.-width field))]
+                      [x y])]
+      (set! cell-order (->> all-cells
+                         (map (fn [pos] [(core/advance-rng rng) pos]))
+                         (sort-by first)
+                         (mapv second))))
+
     (update-field)
     (set! outline-pos nil)
     (set! exploded-pos nil)
+    (set! hinted-pos nil)
     (set! phase :new)
     (set! dragging-flag false)
     (set! tool nil)
@@ -280,6 +294,12 @@
     (when exploded-pos
       (let [[px py] (cell-coord exploded-pos)
             img     (get images "explosion.png")]
+        (.drawImage ctx img px py sprite-size sprite-size)))
+
+    ;; hint highlight
+    (when hinted-pos
+      (let [[px py] (cell-coord hinted-pos)
+            img     (get images "hint.png")]
         (.drawImage ctx img px py sprite-size sprite-size)))
 
     ;; outline
@@ -424,8 +444,16 @@
 (defn solve [cell-fn]
   (let [problem     (str/join
                       (for [y (range (.-height field))
-                            x (range (.-width field))]
-                        (cell-fn [x y] (.get field [x y]))))
+                            x (range (.-width field))
+                            :let [cell                                (.get field [x y])
+                                  {:keys [open flagged secret mines]} cell
+                                  override                            (cell-fn [x y] cell)]]
+                        (cond
+                          override           override
+                          flagged             "F"
+                          (not open)          "."
+                          secret              "?"
+                          :else               (str mines))))
         total-flags (count (filter :mine (.vals field)))]
     (solver/solve (.-width field) (.-height field) total-flags problem)))
 
@@ -433,6 +461,8 @@
   (when (= :new phase)
     (set! phase :play)
     (core/append-history (:id puzzle) :start))
+  (when (= hinted-pos pos)
+    (set! hinted-pos nil))
   (let [cell (get-cell pos)
         {:keys [mine open flagged]} cell
         expert? (:expert @core/*settings)]
@@ -463,22 +493,14 @@
         (when (:auto-open-recursive @core/*settings)
           (maybe-auto-open pos)))
 
-      :let [with-flags    (fn [[x y] {:keys [open flagged secret mines]}]
-                            (cond
-                              flagged       "F"
-                              (= pos [x y]) "F"
-                              (not open)    "."
-                              secret        "?"
-                              :else         (str mines)))
-            without-flags (fn [[x y] {:keys [open flagged secret mines]}]
-                            (cond
-                              (= pos [x y]) "F"
-                              (not open)    "."
-                              secret        "?"
-                              :else         (str mines)))
-            counterexample (or
-                             (solve with-flags)
-                             (solve without-flags))]
+      :let [counterexample (or
+                             (solve (fn [pos' _]
+                                      (cond
+                                        (= pos pos') "F")))
+                             (solve (fn [pos' {:keys [flagged]}]
+                                      (cond
+                                        (= pos pos') "F"
+                                        flagged      "."))))]
 
       counterexample
       (do
@@ -503,6 +525,8 @@
   (when (= :new phase)
     (set! phase :play)
     (core/append-history (:id puzzle) :start))
+  (when (= hinted-pos pos)
+    (set! hinted-pos nil))
   (let [cell (get-cell pos)
         {:keys [flagged open]} cell]
     (cond+
@@ -525,14 +549,14 @@
         (assoc! cell :flagged true)
         (update-field))
 
-      :let [counterexample (solve
-                             (fn [[x y] {:keys [open flagged secret mines]}]
-                               (cond
-                                 (= pos [x y]) "?"
-                                 flagged       "F"
-                                 (not open)    "."
-                                 secret        "?"
-                                 :else         (str mines))))]
+      :let [counterexample (or
+                             (solve (fn [pos' {:keys [flagged]}]
+                                      (cond
+                                        (= pos pos') "?")))
+                             (solve (fn [pos' {:keys [flagged]}]
+                                      (cond
+                                        (= pos pos') "?"
+                                        flagged       "."))))]
 
       counterexample
       (do
@@ -547,6 +571,62 @@
       (do
         (assoc! cell :flagged true)
         (update-field)))))
+
+(defn hint []
+  (cond+
+    (#{:game-over :victory} phase)
+    :noop
+
+    :let [flagged-cells (->> cell-order
+                          (filterv #(:flagged (get-cell %))))]
+
+    ;; cell was incorrectly flagged
+    :let [wrong-flag-hint (some
+                            (fn [pos]
+                              (when (solve (fn [pos' _]
+                                             (cond
+                                               (= pos pos') "?")))
+                                pos))
+                            flagged-cells)]
+
+    wrong-flag-hint
+    (do
+      (set! hinted-pos wrong-flag-hint)
+      (core/request-render))
+
+    :let [unprocessed-cells (->> cell-order
+                              (filterv #(not (processed (get-cell %)))))]
+
+    ;; cell can't possibly be opened
+    :let [flag-hint (some
+                      (fn [pos]
+                        (when-not (solve (fn [pos' _]
+                                           (cond
+                                             (= pos pos') "?")))
+                          pos))
+                      unprocessed-cells)]
+
+    flag-hint
+    (do
+      (set! hinted-pos flag-hint)
+      (core/request-render))
+
+    ;; cell can't possibly be flagged
+    :let [open-hint (some
+                      (fn [pos]
+                        (when-not (solve (fn [pos' _]
+                                           (cond
+                                             (= pos pos') "F")))
+                          pos))
+                      unprocessed-cells)]
+
+    open-hint
+    (do
+      (set! hinted-pos open-hint)
+      (core/request-render))
+
+    :else
+    (println "No hint")))
 
 (defn auto-finish []
   (when-some [action (can-auto-finish?)]
@@ -628,7 +708,7 @@
       (or (.-altKey e) (.-ctrlKey e) (.-metaKey e) (.-shiftKey e))
       :noop
 
-      (#{"1" "d"} key)
+      (= "1" key)
       (on-tool-click :color1)
 
       (= "2" key)
@@ -652,6 +732,10 @@
       (= "f" key)
       (when-some [pos (coord->pos [core/pointer-x core/pointer-y])]
         (flag-cell pos))
+
+      (= "d" key)
+      (when-some [pos (coord->pos [core/pointer-x core/pointer-y])]
+        (open-cell pos))
 
       (= "Escape" key)
       (do
@@ -798,12 +882,12 @@
    :on-pointer-up   on-pointer-up
    :on-pointer-move on-pointer-move
    :on-pointer-down on-pointer-down
-   :resources       #{"btn_restart.png" "btn_finish.png"
+   :resources       #{"btn_restart.png" "btn_finish.png" "btn_hint.png"
                       "0.png" "1.png" "2.png" "3.png" "4.png" "5.png" "6.png" "7.png" "8.png"
                       "0_solved.png" "1_solved.png" "2_solved.png" "3_solved.png" "4_solved.png" "5_solved.png" "6_solved.png" "7_solved.png" "8_solved.png"
                       "-1.png" "-2.png" "-3.png" "-4.png" "-5.png" "-6.png" "-7.png" "-8.png"
                       "error_0.png" "error_1.png" "error_2.png" "error_3.png" "error_4.png" "error_5.png" "error_6.png" "error_7.png"
                       "secret.png" "secret_solved.png" "closed.png" "hover.png" "flagged.png" "flag.png" "flagged_wrong.png"
-                      "mine_0.png" "mine_1.png" "mine_2.png" "mine_3.png" "mine_4.png" "explosion.png"
+                      "mine_0.png" "mine_1.png" "mine_2.png" "mine_3.png" "mine_4.png" "explosion.png" "hint.png"
                       "tool_undo.png" "tool_eraser.png" "tool_color1.png" "tool_color2.png" "tool_color3.png" "tool_color4.png" "tool_clear.png"
                       "tool_eraser_selected.png" "tool_color1_selected.png" "tool_color2_selected.png" "tool_color3_selected.png" "tool_color4_selected.png"}})
