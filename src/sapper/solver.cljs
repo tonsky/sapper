@@ -1,6 +1,7 @@
 (ns sapper.solver2
   (:require
-   [clojure.string :as str])
+   [clojure.string :as str]
+   [sapper.core :as core])
   (:require-macros
    [sapper.macros :refer [cond+]]))
 
@@ -11,6 +12,7 @@
 (def neighbours)
 (def known)
 (def candidates)
+(def active-constraints)
 
 (defclass Problem
   (field field)
@@ -49,17 +51,17 @@
     problem))
 
 (def constraints
-  [{:name "total flags"
-    :check
-    (fn total-flags-check [{:keys [flagged unknown]}]
+  {:total
+   {:check
+    (fn total-check [{:keys [flagged unknown]}]
       (and
         ;; did not placed too many flags
         (<= flagged flags)
         ;; have enough space to get to total
         (>= (+ flagged (count unknown)) flags)))}
 
-   {:name "vanilla"
-    :check
+   :vanilla
+   {:check
     (fn vanilla-check [{:keys [field]}]
       (every?
         (fn [i]
@@ -72,7 +74,29 @@
               (<= fs value)
               ;; have enough space to get to total
               (>= (+ fs unknown) value))))
-        known))}])
+        known))}
+
+   :quad
+   {:check
+    (fn quad-check [{:keys [field]}]
+      (every?
+        (fn [[x y]]
+          (let [i00 (+ (* y w) x)
+                i10 (+ (* y w) (+ x 1))
+                i01 (+ (* (+ y 1) w) x)
+                i11 (+ (* (+ y 1) w) (+ x 1))]
+            (or
+              (identical? "F" (aget field i00))
+              (identical? "." (aget field i00))
+              (identical? "F" (aget field i10))
+              (identical? "." (aget field i10))
+              (identical? "F" (aget field i01))
+              (identical? "." (aget field i01))
+              (identical? "F" (aget field i11))
+              (identical? "." (aget field i11)))))
+        (for [x (range (dec w))
+              y (range (dec h))]
+          [x y])))}})
 
 (defn auto-open [problem]
   (loop [known-idx 0
@@ -130,7 +154,7 @@
   ; (println "exploring" (field-str problem))
   (cond+
     ;; short-circuit if doesn't fit already
-    (not (every? #((:check %) problem) constraints))
+    (not (every? #((:check %) problem) active-constraints))
     nil
 
     ;; leaf -- all explored -- that fits
@@ -161,10 +185,11 @@
       (solve-impl (with-ch (clone-problem problem) candidate "F"))
       (solve-impl (with-ch (clone-problem problem) candidate "?")))))
 
-(defn solve [field-w field-h total-flags input]
+(defn solve [field-w field-h total-flags rules input]
   (set! w field-w)
   (set! h field-h)
   (set! flags total-flags)
+  (set! active-constraints (vals (select-keys constraints rules)))
   (set! idxs (vec (shuffle (range (* w h)))))
   (set! neighbours
     (into {}
@@ -200,63 +225,71 @@
 (defn test []
   (doseq [[w h f id problem] [[3 3 4 "[V]3x3-4-test"
                                ".2.
-                              .?.
-                              1.F"]
+                                .?.
+                                1.F"]
                               [5 5 10 "[V]5x5-10-ZZZZ"
                                ".....
-                              .8...
-                              ...20
-                              23332
-                              001.."]
+                                .8...
+                                ...20
+                                23332
+                                001.."]
                               [5 5 10 "[V]5x5-10-10181"
                                "..2..
-                              .3...
-                              .3...
-                              ...2.
-                              ...2."]
+                                .3...
+                                .3...
+                                ...2.
+                                ...2."]
                               [6 6 14 "[V]6x6-14-10388"
                                "1.....
-                              1.....
-                              .....3
-                              2.....
-                              ...55?
-                              ..4.?."]
+                                1.....
+                                .....3
+                                2.....
+                                ...55?
+                                ..4.?."]
                               [6 6 14 "[V]6x6-14-10740"
                                "......
-                              .6....
-                              .5....
-                              ......
-                              .3....
-                              1....0"]
+                                .6....
+                                .5....
+                                ......
+                                .3....
+                                1....0"]
                               [7 7 20 "[V]7x7-20-11447"
                                "?3...1.
-                              .......
-                              ..4.4..
-                              .4..4..
-                              .5.....
-                              3......
-                              ....0.."]
+                                .......
+                                ..4.4..
+                                .4..4..
+                                .5.....
+                                3......
+                                ....0.."]
                               [8 8 26 "[V]8x8-26-10145"
                                "..2..3..
-                              ........
-                              .....2..
-                              ..7.....
-                              ........
-                              .4......
-                              .5......
-                              ..?.0..."]
+                                ........
+                                .....2..
+                                ..7.....
+                                ........
+                                .4......
+                                .5......
+                                ..?.0..."]
                               [8 8 26 "[V]8x8-26-1388D"
                                "........
-                              .....6..
-                              2.....4.
-                              2.2....1
-                              ........
-                              ........
-                              ........
-                              0.1...3."]]]
+                                .....6..
+                                2.....4.
+                                2.2....1
+                                ........
+                                ........
+                                ........
+                                0.1...3."]
+                              [5 5 10 "[Q]5x5-10-10009"
+                               "..3..
+                                .....
+                                .3...
+                                .4..2
+                                1...2"]]]
     (let [t0       (js/performance.now)
-          solution (solve w h f problem)]
+          solution (solve w h f (core/puzzle-rules id) problem)]
       (println (str
+                 id
+                 " / "
                  (-> (js/performance.now) (- t0) (* 1000) (js/Math.round) (/ 1000)) " ms"
                  " / "
                  (count (filter #(identical? "F" %) solution)) " mines"

@@ -38,6 +38,7 @@
 (def exploded-pos nil)
 (def hinted-pos nil)
 (def cell-order [])
+(def rules #{})
 (def buttons)
 (def dragging-flag false)
 (def tool nil)
@@ -155,7 +156,11 @@
 (defn on-enter [[_ id]]
   (let [_         (set! puzzle (get core/puzzles-by-id id))
         code      (:code puzzle)
+        ptype     (:type puzzle)
         [_ fw fh] (re-find #"(\d+)x(\d+)" id)]
+
+    (set! rules
+      (core/puzzle-rules id))
 
     (set! buttons
       {:back     {:l  10            :t 10 :w 50 :h 50 :icon "btn_back.png"     :on-click #(core/navigate [:level-select (:type puzzle)])}
@@ -455,7 +460,7 @@
                           secret              "?"
                           :else               (str mines))))
         total-flags (count (filter :mine (.vals field)))]
-    (solver/solve (.-width field) (.-height field) total-flags problem)))
+    (solver/solve (.-width field) (.-height field) total-flags rules problem)))
 
 (defn open-cell [pos]
   (when (= :new phase)

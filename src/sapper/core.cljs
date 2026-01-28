@@ -129,6 +129,12 @@
               (navigate [:game (rand-nth just-lost)])
               (navigate [:game (rand-nth puzzles)]))))))))
 
+(defn puzzle-rules [id]
+  (cond
+    (str/starts-with? id "[V]") #{:total :vanilla}
+    (str/starts-with? id "[Q]") #{:total :vanilla :quad}
+    :else                       (throw (js/Error. "Unknown puzzle type"))))
+
 ;; Resources
 
 (defn load-resources [cb]
@@ -136,7 +142,9 @@
         resources (into
                     #{"btn_back.png" "btn_random.png" "btn_settings.png"
                       "toggle.png"
-                      "CoFoSansSemi-Mono-Regular.woff2" "CoFoSansSemi-Mono-Bold.woff2"}
+                      "CoFoSansSemi-Mono-Regular.woff2" "CoFoSansSemi-Mono-Bold.woff2"
+                      "[V]5x5-10.txt" "[V]6x6-14.txt" "[V]7x7-20.txt" "[V]8x8-26.txt"
+                      "[Q]5x5-10.txt" "[Q]6x6-14.txt" "[Q]7x7-20.txt" "[Q]8x8-26.txt"}
                     (mapcat :resources (vals screens)))
         *pending (atom (count resources))]
     (add-watch *pending ::cb

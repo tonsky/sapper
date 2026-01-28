@@ -113,5 +113,4 @@
    :on-render       on-render
    :on-pointer-move on-pointer-move
    :on-pointer-up   on-pointer-up
-   :resources       #{"[V]5x5-10.txt" "[V]6x6-14.txt" "[V]7x7-20.txt" "[V]8x8-26.txt"
-                      "level_select.png"}})
+   :resources       #{"level_select.png"}})

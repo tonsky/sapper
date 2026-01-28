@@ -8,6 +8,7 @@
 - [ ] New id button
 - [ ] Reset progress button
 - [ ] Show progress on main screen
+- [x] Puzzle type: Quad
 - [x] Hints
 - [x] F to flag
 - [x] Option: Check flags
