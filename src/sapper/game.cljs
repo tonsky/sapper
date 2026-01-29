@@ -586,13 +586,18 @@
                           (filterv #(:flagged (get-cell %))))]
 
     ;; cell was incorrectly flagged
-    :let [wrong-flag-hint (some
+    :let [t               (js/performance.now)
+          *iters          (atom 0)
+          wrong-flag-hint (some
                             (fn [pos]
+                              (swap! *iters inc)
                               (when (solve (fn [pos' _]
                                              (cond
                                                (= pos pos') "?")))
                                 pos))
-                            flagged-cells)]
+                            flagged-cells)
+          _               (when (pos? @*iters)
+                            (println "Wrong flags check," @*iters "iterations," (core/delta-t t)))]
 
     wrong-flag-hint
     (do
@@ -603,13 +608,18 @@
                               (filterv #(not (processed (get-cell %)))))]
 
     ;; cell can't possibly be opened
-    :let [flag-hint (some
+    :let [t         (js/performance.now)
+          *iters    (atom 0)
+          flag-hint (some
                       (fn [pos]
+                        (swap! *iters inc)
                         (when-not (solve (fn [pos' _]
                                            (cond
                                              (= pos pos') "?")))
                           pos))
-                      unprocessed-cells)]
+                      unprocessed-cells)
+          _         (when (pos? @*iters)
+                      (println "Flags hint," @*iters "iterations," (core/delta-t t)))]
 
     flag-hint
     (do
@@ -617,13 +627,18 @@
       (core/request-render))
 
     ;; cell can't possibly be flagged
-    :let [open-hint (some
+    :let [t         (js/performance.now)
+          *iters    (atom 0)
+          open-hint (some
                       (fn [pos]
+                        (swap! *iters inc)
                         (when-not (solve (fn [pos' _]
                                            (cond
                                              (= pos pos') "F")))
                           pos))
-                      unprocessed-cells)]
+                      unprocessed-cells)
+          _         (when (pos? @*iters)
+                      (println "Open hint," @*iters "iterations," (core/delta-t t)))]
 
     open-hint
     (do

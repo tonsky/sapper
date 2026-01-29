@@ -1,3 +1,16 @@
+- [ ] Puzzle type: [M] Multiple. Each mine in a colored cell counts as two (Remaining mine count is unaffected by this rule). [@c] Checkedboard coloring
+- [ ] Puzzle type: [L] Liar: each clue is either one greater or one less than the actual value
+- [ ] Puzzle type: [T] Triplet: mines may not form row of three orthogonally or diagonally
+- [ ] Puzzle type: [W] Wall: the clue indicates the lengths of consecutive mines in the neighboring 8 cells
+- [ ] Puzzle type: [O] Outside: all non-mines are orthogonally connected and all mines are orthogonally connected to the outside
+- [ ] Puzzle type: [N] Negation: the clue indicates the difference in the number of mines between adjacent colored and uncolored cells. [@c] Checkedboard coloring
+- [ ] Puzzle type: [D] Dual: all mines must form 1x2 or 2x1 blocks. Blocks do not touch each other
+- [ ] Puzzle type: [X] Cross: the clue indicates the number of mines in a cross region withing distance 2
+- [ ] Puzzle type: [S] Snake: all mines form a single snake whose body does not touch itself
+- [ ] Puzzle type: [T'] Triplet': Mines must be a part of row of three orthogonally or diagonally
+- [ ] Puzzle type: [D'] Battleship: all mines must for 1x1, 1x2, 1x3 or 1x4 blocks. Blocks do not touch each other (even diagonally)
+- [ ] Puzzle type: [A]: Anti-knight: no two mines can be a knight’s move away from each other
+- [ ] Puzzle type: [H]: Horizontal. No two mines can touch horizontally
 - [ ] Abstract away canvas operations
 - [ ] Open animation
 - [ ] Sync settings
@@ -8,7 +21,8 @@
 - [ ] New id button
 - [ ] Reset progress button
 - [ ] Show progress on main screen
-- [x] Puzzle type: Quad
+- [x] Puzzle type: [C] Connected: all mines are orthogonally or diagonally connected
+- [x] Puzzle type: [Q] Quad. There must be at least 1 mine in every 2x2 area
 - [x] Hints
 - [x] F to flag
 - [x] Option: Check flags

@@ -3,7 +3,7 @@
    [clojure.string :as str]
    [sapper.core :as core])
   (:require-macros
-   [sapper.macros :refer [cond+]]))
+   [sapper.macros :refer [cond+ either]]))
 
 (def w)
 (def h)
@@ -60,6 +60,7 @@
         ;; have enough space to get to total
         (>= (+ flagged (count unknown)) flags)))}
 
+   ;; [V] Nothing special
    :vanilla
    {:check
     (fn vanilla-check [{:keys [field]}]
@@ -76,27 +77,40 @@
               (>= (+ fs unknown) value))))
         known))}
 
+   ;; [Q] There must be at least 1 mine in every 2x2 area
    :quad
    {:check
     (fn quad-check [{:keys [field]}]
       (every?
         (fn [[x y]]
-          (let [i00 (+ (* y w) x)
-                i10 (+ (* y w) (+ x 1))
-                i01 (+ (* (+ y 1) w) x)
-                i11 (+ (* (+ y 1) w) (+ x 1))]
-            (or
-              (identical? "F" (aget field i00))
-              (identical? "." (aget field i00))
-              (identical? "F" (aget field i10))
-              (identical? "." (aget field i10))
-              (identical? "F" (aget field i01))
-              (identical? "." (aget field i01))
-              (identical? "F" (aget field i11))
-              (identical? "." (aget field i11)))))
+          (or
+            (either identical? "F" "." (aget field (+ (* y w) x)))
+            (either identical? "F" "." (aget field (+ (* y w) (+ x 1))))
+            (either identical? "F" "." (aget field (+ (* (+ y 1) w) x)))
+            (either identical? "F" "." (aget field (+ (* (+ y 1) w) (+ x 1))))))
         (for [x (range (dec w))
               y (range (dec h))]
-          [x y])))}})
+          [x y])))}
+
+   ;; [C] All mines are orthogonally or diagonally connected
+   :connected
+   {:check
+    (fn connected-check [{:keys [field]}]
+      (let [flag-indices (filterv #(either identical? "F" "." (aget field %)) idxs)]
+        ;; DFS through F or . cells
+        (let [start   (first flag-indices)
+              visited (js/Set. [start])
+              queue   [start]]
+          (loop []
+            (when-some [current (.pop queue)]
+              (doseq [nb    (get neighbours current)
+                      :when (not (.has visited nb))
+                      :let  [ch (aget field nb)]
+                      :when (either identical? "F" "." ch)]
+                (conj! visited nb)
+                (conj! queue nb))
+              (recur)))
+          (every? #(.has visited %) flag-indices))))}})
 
 (defn auto-open [problem]
   (loop [known-idx 0
@@ -223,37 +237,37 @@
     (:field (solve-impl problem))))
 
 (defn test []
-  (doseq [[w h f id problem] [[3 3 4 "[V]3x3-4-test"
+  (doseq [[w h f id problem] [#_[3 3 4 "[V]3x3-4-test"
                                ".2.
                                 .?.
                                 1.F"]
-                              [5 5 10 "[V]5x5-10-ZZZZ"
+                              #_[5 5 10 "[V]5x5-10-ZZZZ"
                                ".....
                                 .8...
                                 ...20
                                 23332
                                 001.."]
-                              [5 5 10 "[V]5x5-10-10181"
+                              #_[5 5 10 "[V]5x5-10-10181"
                                "..2..
                                 .3...
                                 .3...
                                 ...2.
                                 ...2."]
-                              [6 6 14 "[V]6x6-14-10388"
+                              #_[6 6 14 "[V]6x6-14-10388"
                                "1.....
                                 1.....
                                 .....3
                                 2.....
                                 ...55?
                                 ..4.?."]
-                              [6 6 14 "[V]6x6-14-10740"
+                              #_[6 6 14 "[V]6x6-14-10740"
                                "......
                                 .6....
                                 .5....
                                 ......
                                 .3....
                                 1....0"]
-                              [7 7 20 "[V]7x7-20-11447"
+                              #_[7 7 20 "[V]7x7-20-11447"
                                "?3...1.
                                 .......
                                 ..4.4..
@@ -261,7 +275,7 @@
                                 .5.....
                                 3......
                                 ....0.."]
-                              [8 8 26 "[V]8x8-26-10145"
+                              #_[8 8 26 "[V]8x8-26-10145"
                                "..2..3..
                                 ........
                                 .....2..
@@ -279,12 +293,36 @@
                                 ........
                                 ........
                                 0.1...3."]
-                              [5 5 10 "[Q]5x5-10-10009"
+                              #_[5 5 10 "[Q]5x5-10-10009"
                                "..3..
                                 .....
                                 .3...
                                 .4..2
-                                1...2"]]]
+                                1...2"]
+                              [8 8 26 "[Q]8x8-26-10355"
+                               ".1.2.2..
+                                ........
+                                ....4.5.
+                                ......4.
+                                .....5..
+                                ........
+                                2....3..
+                                .......2"]
+                              #_[5 5 10 "[C]5x5-10-test"
+                               "..33.
+                                ...4.
+                                .....
+                                .....
+                                .1..."]
+                              [8 8 26 "[C]8x8-26-10757"
+                               "..1.....
+                                .......?
+                                ...1....
+                                .....4.4
+                                ........
+                                .....?..
+                                ...1....
+                                ........"]]]
     (let [t0       (js/performance.now)
           solution (solve w h f (core/puzzle-rules id) problem)]
       (println (str
