@@ -36,8 +36,23 @@
       :else
       (recur res (inc idx)))))
 
+(defn emojify [s]
+  (-> s
+    (str/replace "F" "🟥")
+    (str/replace "?" "⬜")
+    (str/replace "0" "0️⃣")
+    (str/replace "1" "1️⃣")
+    (str/replace "2" "2️⃣")
+    (str/replace "3" "3️⃣")
+    (str/replace "4" "4️⃣")
+    (str/replace "5" "5️⃣")
+    (str/replace "6" "6️⃣")
+    (str/replace "7" "7️⃣")
+    (str/replace "8" "8️⃣")))
+
+
 (defn field-str [problem]
-  (str "\n\n" (str/join "\n" (map #(str/join %) (partition w (.-field problem))))))
+  (str "\n\n" (str/join "\n" (map #(emojify (str/join %)) (partition w (.-field problem))))))
 
 (defn clone-problem [{:keys [field flagged unknown]}]
   (Problem. (.slice field) flagged (js/Set. unknown)))
@@ -110,7 +125,55 @@
                 (conj! visited nb)
                 (conj! queue nb))
               (recur)))
-          (every? #(.has visited %) flag-indices))))}})
+          (every? #(.has visited %) flag-indices))))}
+
+   ;; [T] Flags may not form row of three orthogonally or diagonally
+   :anti-triplet
+   {:check
+    (fn anti-triplet-check [{:keys [field]}]
+      (reduce
+        (fn [_ idx]
+          (let [y (quot idx w)
+                x (mod idx w)]
+            (if (and
+                  (identical? "F" (aget field idx))
+                  (or
+                    ;; FFF
+                    ;; ...
+                    ;; ...
+                    (and
+                      (< (+ x 2) w)
+                      (identical? "F" (aget field (+ (+ x 1) (* y w))))
+                      (identical? "F" (aget field (+ (+ x 2) (* y w)))))
+
+                    ;; F..
+                    ;; F..
+                    ;; F..
+                    (and
+                      (< (+ y 2) h)
+                      (identical? "F" (aget field (+ x (* (+ y 1) w))))
+                      (identical? "F" (aget field (+ x (* (+ y 2) w)))))
+
+                    ;; F..
+                    ;; .F.
+                    ;; ..F
+                    (and
+                      (< (+ x 2) w)
+                      (< (+ y 2) h)
+                      (identical? "F" (aget field (+ (+ x 1) (* (+ y 1) w))))
+                      (identical? "F" (aget field (+ (+ x 2) (* (+ y 2) w)))))
+
+                    ;; ..F
+                    ;; .F.
+                    ;; F..
+                    (and
+                      (>= x 2)
+                      (< (+ y 2) h)
+                      (identical? "F" (aget field (+ (- x 1) (* (+ y 1) w))))
+                      (identical? "F" (aget field (+ (- x 2) (* (+ y 2) w)))))))
+              (reduced false)
+              true)))
+        true idxs))}})
 
 (defn auto-open [problem]
   (loop [known-idx 0
@@ -322,7 +385,22 @@
                                 ........
                                 .....?..
                                 ...1....
-                                ........"]]]
+                                ........"]
+                              #_[5 5 10 "[T]5x5-10-7222"
+                               ".....
+                                ....4
+                                .....
+                                .....
+                                1.3.."]
+                              [8 8 26 "[T]8x8-26-10817"
+                               "..3.....
+                                .......3
+                                ........
+                                .4..3...
+                                .....5..
+                                ........
+                                ..3.....
+                                ..2....."]]]
     (let [t0       (js/performance.now)
           solution (solve w h f (core/puzzle-rules id) problem)]
       (println (str

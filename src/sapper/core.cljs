@@ -137,6 +137,7 @@
     (str/starts-with? id "[V]") #{:total :vanilla}
     (str/starts-with? id "[Q]") #{:total :vanilla :quad}
     (str/starts-with? id "[C]") #{:total :vanilla :connected}
+    (str/starts-with? id "[T]") #{:total :vanilla :anti-triplet}
     :else                       (throw (js/Error. "Unknown puzzle type"))))
 
 ;; Resources
@@ -149,7 +150,8 @@
                       "CoFoSansSemi-Mono-Regular.woff2" "CoFoSansSemi-Mono-Bold.woff2"
                       "[V]5x5-10.txt" "[V]6x6-14.txt" "[V]7x7-20.txt" "[V]8x8-26.txt"
                       "[Q]5x5-10.txt" "[Q]6x6-14.txt" "[Q]7x7-20.txt" "[Q]8x8-26.txt"
-                      "[C]5x5-10.txt" "[C]6x6-14.txt" "[C]7x7-20.txt" "[C]8x8-26.txt"}
+                      "[C]5x5-10.txt" "[C]6x6-14.txt" "[C]7x7-20.txt" "[C]8x8-26.txt"
+                      "[T]5x5-10.txt" "[T]6x6-14.txt" "[T]7x7-20.txt" "[T]8x8-26.txt"}
                     (mapcat :resources (vals screens)))
         *pending (atom (count resources))]
     (add-watch *pending ::cb
