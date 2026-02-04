@@ -499,7 +499,7 @@
              ........
              2....3..
              .......2"]
-           #_[8 8 26 "[C]8x8-26-10757"
+           [8 8 26 "[C]8x8-26-10757"
             "..1.....
              .......?
              ...1....
@@ -525,7 +525,7 @@
                   (solve w h f rules problem))
           _     (println "  Warmup" (-> (- (js/performance.now) t0) (/ iters)) "ms / solve," iters "iters")
           t0        (js/performance.now)
-          iters 1000
+          iters 100
           _     (dotimes [_ iters]
                   (solve w h f rules problem))
           _     (println "   Solve" (-> (- (js/performance.now) t0) (/ iters)) "ms / solve," iters "iters")])))
