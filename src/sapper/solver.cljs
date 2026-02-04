@@ -26,14 +26,16 @@
   (field field)
   (field flagged)
   (field unknown)
+  (field flag_indices)
   (field states)
   (field changes)
-  (constructor [_ a b c d e]
+  (constructor [_ a b c d e f]
     (set! field   a)
     (set! flagged b)
     (set! unknown c)
-    (set! states  d)
-    (set! changes e)))
+    (set! flag_indices d)
+    (set! states  e)
+    (set! changes f)))
 
 (defn count-val [arr indices val]
   (loop [res 0
@@ -63,14 +65,15 @@
 (defn string-with [s i ch]
   (str (.slice s 0 i) ch (.slice s (inc i))))
 
-(defn clone-problem [{:keys [field flagged unknown states changes]}]
-  (Problem. (js/Uint8Array. field) flagged unknown (js/Map. states) (.slice changes)))
+(defn clone-problem [{:keys [field flagged unknown flag_indices states changes]}]
+  (Problem. (js/Uint8Array. field) flagged unknown (.slice flag_indices) (js/Map. states) (.slice changes)))
 
 (defn with-val [problem i val]
-  (let [{:keys [field flagged unknown changes]} problem]
+  (let [{:keys [field flagged unknown flag_indices changes]} problem]
     (aset field i val)
     (when (identical? FLAG val)
-      (set! (.-flagged problem) (inc flagged)))
+      (set! (.-flagged problem) (inc flagged))
+      (.push flag_indices i))
     (set! (.-unknown problem) (dec unknown))
     (.push changes [i val])
     problem))
@@ -138,18 +141,14 @@
       (every? #(.has visited %) flag-indices))))
 
 ;; [T] Flags may not form row of three orthogonally or diagonally
-(defn cs-anti-triplet-check [{:keys [field]}]
+(defn cs-anti-triplet-check [{:keys [field flag_indices]}]
   (loop [i 0]
     (cond+
-      (>= i (alength idxs))
+      (>= i (alength flag_indices))
       true
 
-      :let [idx (aget idxs i)]
-
-      (not (identical? FLAG (aget field idx)))
-      (recur (inc i))
-
-      :let [y   (quot idx w)
+      :let [idx (aget flag_indices i)
+            y   (quot idx w)
             x   (mod idx w)]
 
       ;; FFF
@@ -277,14 +276,11 @@
     problem
 
     :let [problem' (auto-open problem)]
-
     (not= (.-field problem') (.-field problem))
     (do
       ; (println "auto-open" (field-str problem) (field-str problem'))
       (recur problem'))
-
     :let [problem' (auto-finish problem)]
-
     problem'
     (do
       ; (println "auto-finish" (field-str problem) (field-str problem'))
@@ -335,11 +331,12 @@
                   (+ (* y' w) x'))))))
         arr)))
   (.set neighbours-cache (js/JSON.stringify [w h]) neighbours)
-  (let [chars    (.split (str/replace input #"\s" "") "")
-        field    (js/Uint8Array. (map parse-cell chars))
-        flagged  (count (filterv #(identical? FLAG (aget field %)) idxs))
-        unknown  (count (filterv #(identical? UNKNOWN (aget field %)) idxs))
-        problem  (Problem. field flagged unknown (js/Map.) [])]
+  (let [chars        (.split (str/replace input #"\s" "") "")
+        field        (js/Uint8Array. (map parse-cell chars))
+        flagged      (count (filterv #(identical? FLAG (aget field %)) idxs))
+        unknown      (count (filterv #(identical? UNKNOWN (aget field %)) idxs))
+        flag_indices (filterv #(identical? FLAG (aget field %)) idxs)
+        problem      (Problem. field flagged unknown flag_indices (js/Map.) [])]
     (set! known
       (->> idxs
         (filterv #(<= 0 (aget field %) 8))))
@@ -533,5 +530,5 @@
                   (solve w h f rules problem))
           _     (println "   Solve" (-> (- (js/performance.now) t0) (/ iters)) "ms / solve," iters "iters")])))
 
-#_(test)
-#_(bench)
+(test)
+(bench)
