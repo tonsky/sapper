@@ -4,3 +4,4 @@ node_modules
 .syncthing.*
 /sync*
 /.vibe
+*.cpuprofile

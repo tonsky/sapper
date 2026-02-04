@@ -80,6 +80,15 @@
 (defn indexed [seq]
   (map vector (range) seq))
 
+(defn find [pred coll]
+  (loop [i 0]
+    (if (>= i (alength coll))
+      nil
+      (let [el (aget coll i)]
+        (if (pred el)
+          el
+          (recur (inc i)))))))
+
 (defn clamp [x min max]
   (js/Math.max (js/Math.min x max) min))
 

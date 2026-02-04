@@ -5,6 +5,11 @@
   (:require-macros
    [sapper.macros :refer [cond+ either]]))
 
+;; Field cell values: 0-8 = open cells with mine count
+(def FLAG 9)    ;; F - flagged cell
+(def SECRET 10) ;; ? - confirmed safe cell
+(def CLOSED 11) ;; . - unknown/closed cell
+
 (def w)
 (def h)
 (def total-flags)
@@ -19,68 +24,60 @@
   (field field)
   (field flagged)
   (field unknown)
-  (field states)
-  (field changes)
+  #_(field states)
+  #_(field changes)
   (constructor [_ a b c d e]
     (set! field   a)
     (set! flagged b)
     (set! unknown c)
-    (set! states  d)
-    (set! changes e)))
+    #_(set! states  d)
+    #_(set! changes e)))
 
-(defn count-chars [arr indices ch]
+(defn count-val [arr indices val]
   (loop [res 0
          idx 0]
     (cond+
       (>= idx (alength indices))
       res
 
-      (identical? ch (aget arr (aget indices idx)))
+      (identical? val (aget arr (aget indices idx)))
       (recur (inc res) (inc idx))
 
       :else
       (recur res (inc idx)))))
 
-(defn emojify [s]
-  (-> s
-    (str/replace "F" "🚩")
-    (str/replace "?" "❓")
-    (str/replace "." "⬜")
-    (str/replace "0" "0️⃣")
-    (str/replace "1" "1️⃣")
-    (str/replace "2" "2️⃣")
-    (str/replace "3" "3️⃣")
-    (str/replace "4" "4️⃣")
-    (str/replace "5" "5️⃣")
-    (str/replace "6" "6️⃣")
-    (str/replace "7" "7️⃣")
-    (str/replace "8" "8️⃣")
-    (str/replace "S" "🟩")
-    (str/replace "D" "🟥")))
+(def emojis
+  [;; 0-8: open cells
+   "0️⃣" "1️⃣" "2️⃣" "3️⃣" "4️⃣" "5️⃣" "6️⃣" "7️⃣" "8️⃣"
+   ;; 9: FLAG, 10: SECRET, 11: CLOSED, 12: SAFE, 13: DANGER
+   "🚩" "❓" "⬜" "🟩" "🟥"])
+
+(defn cell-str [val]
+  (aget emojis val))
 
 (defn field-str [field]
-  (str "\n\n" (str/join "\n" (map #(emojify (str/join %)) (partition w field)))))
+  (str "\n\n" (str/join "\n" (map #(str/join (map cell-str %)) (partition w field)))))
 
 (defn string-with [s i ch]
   (str (.slice s 0 i) ch (.slice s (inc i))))
 
 (defn clone-problem [{:keys [field flagged unknown states changes]}]
-  (Problem. (.slice field) flagged unknown (js/Map. states) (.slice changes)))
+  (Problem. (js/Uint8Array. field) flagged unknown #_(js/Map. states) #_(.slice changes)))
 
-(defn with-ch [problem i ch]
+(defn with-val [problem i val]
   (let [{:keys [field flagged unknown changes]} problem]
-    (aset field i ch)
-    (set! (.-unknown problem) (dec unknown))
-    (.push changes [i ch])
-    (when (identical? "F" ch)
+    (aset field i val)
+    (when (identical? FLAG val)
       (set! (.-flagged problem) (inc flagged)))
+    (set! (.-unknown problem) (dec unknown))
+    #_(.push changes [i val])
     problem))
 
 ;; [*] Count amount of mines
 (defn cs-total-init [{:keys [field states]}]
   (assoc! states :total
-    {:flagged (count-chars field idxs "F")
-     :unknown (count-chars field idxs ".")}))
+    {:flagged (count-val field idxs FLAG)
+     :unknown (count-val field idxs CLOSED)}))
 
 (defn cs-total-check-incr [{:keys [field states changes]}]
   (let [[flagged unknown]
@@ -89,11 +86,11 @@
                change-idx 0]
           (if (>= change-idx (alength changes))
             [flagged unknown]
-            (let [[_idx ch] (nth changes change-idx)]
+            (let [[_idx val] (nth changes change-idx)]
               (cond
-                (identical? "F" ch) (recur (inc flagged) (dec unknown) (inc change-idx))
-                (identical? "?" ch) (recur      flagged  (dec unknown) (inc change-idx))
-                :else               (throw (js/Error. (str "Unepxected change" _idx ch)))))))]
+                (identical? FLAG val)   (recur (inc flagged) (dec unknown) (inc change-idx))
+                (identical? SECRET val) (recur      flagged  (dec unknown) (inc change-idx))
+                :else                   (throw (js/Error. (str "Unepxected change" _idx val)))))))]
     (assoc! states :total {:flagged flagged :unknown unknown})
     (and
       ;; did not placed too many flags
@@ -116,12 +113,12 @@
     ;; For each numbered cell, count surrounding F and .
     (doseq [i known
             :let [nbs (aget neighbours i)]]
-      (assoc! vanilla-flags i (count-chars field nbs "F"))
-      (assoc! vanilla-unknown i (count-chars field nbs ".")))
-    ;; For each ".", find numbered cells surrounding it
+      (assoc! vanilla-flags i (count-val field nbs FLAG))
+      (assoc! vanilla-unknown i (count-val field nbs CLOSED)))
+    ;; For each CLOSED, find numbered cells surrounding it
     (doseq [i candidates
             :let [nbs (aget neighbours i)]]
-      (assoc! vanilla-neighbours i (filterv #(<= "0" (aget field %) "8") nbs)))
+      (assoc! vanilla-neighbours i (filterv #(<= 0 (aget field %) 8) nbs)))
     (assoc! states
       :vanilla/flags vanilla-flags
       :vanilla/unknown vanilla-unknown
@@ -134,12 +131,12 @@
         affected           (js/Set.)]
     (and
       (every? true?
-        (for [[idx ch] changes
-              num-idx  (or (.get vanilla-neighbours idx) [])
-              :let [value    (parse-long (aget field num-idx))
+        (for [[idx val] changes
+              num-idx   (or (.get vanilla-neighbours idx) [])
+              :let [value    (aget field num-idx)
                     flags    (.get vanilla-flags num-idx)
                     unknown  (.get vanilla-unknown num-idx)
-                    flags'   (cond-> flags (identical? "F" ch) inc)
+                    flags'   (cond-> flags (identical? FLAG val) inc)
                     unknown' (dec unknown)
                     _        (assoc! vanilla-flags   num-idx flags')
                     _        (assoc! vanilla-unknown num-idx unknown')]]
@@ -155,10 +152,10 @@
 (defn cs-vanilla-check [{:keys [field]}]
   (every?
     (fn [i]
-      (let [value   (parse-long (aget field i))
+      (let [value   (aget field i)
             nbs     (aget neighbours i)
-            fs      (count-chars field nbs "F")
-            unknown (count-chars field nbs ".")]
+            fs      (count-val field nbs FLAG)
+            unknown (count-val field nbs CLOSED)]
         (and
           ;; did not placed too many flags
           (<= fs value)
@@ -171,18 +168,18 @@
   (every?
     (fn [[x y]]
       (or
-        (either identical? "F" "." (aget field (+ (* y w) x)))
-        (either identical? "F" "." (aget field (+ (* y w) (+ x 1))))
-        (either identical? "F" "." (aget field (+ (* (+ y 1) w) x)))
-        (either identical? "F" "." (aget field (+ (* (+ y 1) w) (+ x 1))))))
+        (either identical? FLAG CLOSED (aget field (+ (* y w) x)))
+        (either identical? FLAG CLOSED (aget field (+ (* y w) (+ x 1))))
+        (either identical? FLAG CLOSED (aget field (+ (* (+ y 1) w) x)))
+        (either identical? FLAG CLOSED (aget field (+ (* (+ y 1) w) (+ x 1))))))
     (for [x (range (dec w))
           y (range (dec h))]
       [x y])))
 
 ;; [C] All mines are orthogonally or diagonally connected
 (defn cs-connected-check [{:keys [field]}]
-  (let [flag-indices (filterv #(either identical? "F" "." (aget field %)) idxs)]
-    ;; DFS through F or . cells
+  (let [flag-indices (filterv #(either identical? FLAG CLOSED (aget field %)) idxs)]
+    ;; DFS through FLAG or CLOSED cells
     (let [start   (first flag-indices)
           visited (js/Set. [start])
           queue   [start]]
@@ -190,8 +187,8 @@
         (when-some [current (.pop queue)]
           (doseq [nb    (aget neighbours current)
                   :when (not (.has visited nb))
-                  :let  [ch (aget field nb)]
-                  :when (either identical? "F" "." ch)]
+                  :let  [val (aget field nb)]
+                  :when (either identical? FLAG CLOSED val)]
             (conj! visited nb)
             (conj! queue nb))
           (recur)))
@@ -204,13 +201,13 @@
     (and
       (>= x1 0) (< x1 w) (>= y1 0) (< y1 h)
       (>= x2 0) (< x2 w) (>= y2 0) (< y2 h)
-      (identical? "F" (aget field (+ x1 (* y1 w))))
-      (identical? "F" (aget field (+ x2 (* y2 w)))))))
+      (identical? FLAG (aget field (+ x1 (* y1 w))))
+      (identical? FLAG (aget field (+ x2 (* y2 w)))))))
 
 (defn cs-anti-triplet-check-incr [{:keys [field changes]}]
   (reduce
-    (fn [_ [idx ch]]
-      (if (identical? "?" ch)
+    (fn [_ [idx val]]
+      (if (identical? SECRET val)
         true
         (let [y (quot idx w)
               x (mod idx w)]
@@ -236,49 +233,55 @@
     true changes))
 
 (defn cs-anti-triplet-check [{:keys [field]}]
-      (reduce
-        (fn [_ idx]
-          (let [y (quot idx w)
-                x (mod idx w)]
-            (if (and
-                  (identical? "F" (aget field idx))
-                  (or
-                    ;; FFF
-                    ;; ...
-                    ;; ...
-                    (and
-                      (< (+ x 2) w)
-                      (identical? "F" (aget field (+ (+ x 1) (* y w))))
-                      (identical? "F" (aget field (+ (+ x 2) (* y w)))))
+  (loop [i 0]
+    (cond+
+      (>= i (alength idxs))
+      true
 
-                    ;; F..
-                    ;; F..
-                    ;; F..
-                    (and
-                      (< (+ y 2) h)
-                      (identical? "F" (aget field (+ x (* (+ y 1) w))))
-                      (identical? "F" (aget field (+ x (* (+ y 2) w)))))
+      :let [idx (aget idxs i)
+            y   (quot idx w)
+            x   (mod idx w)]
 
-                    ;; F..
-                    ;; .F.
-                    ;; ..F
-                    (and
-                      (< (+ x 2) w)
-                      (< (+ y 2) h)
-                      (identical? "F" (aget field (+ (+ x 1) (* (+ y 1) w))))
-                      (identical? "F" (aget field (+ (+ x 2) (* (+ y 2) w)))))
+      (and
+        (identical? FLAG (aget field idx))
+        (or
+          ;; FFF
+          ;; ...
+          ;; ...
+          (and
+            (< (+ x 2) w)
+            (identical? FLAG (aget field (+ (+ x 1) (* y w))))
+            (identical? FLAG (aget field (+ (+ x 2) (* y w)))))
 
-                    ;; ..F
-                    ;; .F.
-                    ;; F..
-                    (and
-                      (>= x 2)
-                      (< (+ y 2) h)
-                      (identical? "F" (aget field (+ (- x 1) (* (+ y 1) w))))
-                      (identical? "F" (aget field (+ (- x 2) (* (+ y 2) w)))))))
-              (reduced false)
-              true)))
-        true idxs))
+          ;; F..
+          ;; F..
+          ;; F..
+          (and
+            (< (+ y 2) h)
+            (identical? FLAG (aget field (+ x (* (+ y 1) w))))
+            (identical? FLAG (aget field (+ x (* (+ y 2) w)))))
+
+          ;; F..
+          ;; .F.
+          ;; ..F
+          (and
+            (< (+ x 2) w)
+            (< (+ y 2) h)
+            (identical? FLAG (aget field (+ (+ x 1) (* (+ y 1) w))))
+            (identical? FLAG (aget field (+ (+ x 2) (* (+ y 2) w)))))
+
+          ;; ..F
+          ;; .F.
+          ;; F..
+          (and
+            (>= x 2)
+            (< (+ y 2) h)
+            (identical? FLAG (aget field (+ (- x 1) (* (+ y 1) w))))
+            (identical? FLAG (aget field (+ (- x 2) (* (+ y 2) w)))))))
+      false
+
+      :else
+      (recur (inc i)))))
 
 (def constraints
   {:total        {;; :init  cs-total-init
@@ -298,22 +301,22 @@
 
       :let [i       (aget known known-idx)
             {:keys [field]} problem
-            value   (parse-long (aget field i))
+            value   (aget field i)
             nbs     (aget neighbours i)
-            unknown (count-chars field nbs ".")]
+            unknown (count-val field nbs CLOSED)]
       ;; nothing to open
       (identical? 0 unknown)
       (recur (inc known-idx) problem)
 
-      :let [fs (count-chars field nbs "F")]
+      :let [fs (count-val field nbs FLAG)]
 
       ;; all flagged, can open the rest
       (identical? fs value)
-      (recur 0 (reduce #(if (identical? "." (aget field %2)) (with-ch %1 %2 "?") %1) (clone-problem problem) nbs))
+      (recur 0 (reduce #(if (identical? CLOSED (aget field %2)) (with-val %1 %2 SECRET) %1) (clone-problem problem) nbs))
 
       ;; can flag the rest
       (identical? (- value fs) unknown)
-      (recur 0 (reduce #(if (identical? "." (aget field %2)) (with-ch %1 %2 "F") %1) (clone-problem problem) nbs))
+      (recur 0 (reduce #(if (identical? CLOSED (aget field %2)) (with-val %1 %2 FLAG) %1) (clone-problem problem) nbs))
 
       :else
       (recur (inc known-idx) problem))))
@@ -323,29 +326,33 @@
     (cond+
       ;; can open the rest
       (identical? flagged total-flags)
-      (reduce #(if (identical? "." (aget field %2))
-                 (with-ch %1 %2 "?")
+      (reduce #(if (identical? CLOSED (aget field %2))
+                 (with-val %1 %2 SECRET)
                  %1)
         (clone-problem problem) idxs)
 
       ;; can flag the rest
       (identical? (- total-flags flagged) unknown)
-      (reduce #(if (identical? "." (aget field %2))
-                 (with-ch %1 %2 "F")
+      (reduce #(if (identical? CLOSED (aget field %2))
+                 (with-val %1 %2 FLAG)
                  %1)
         (clone-problem problem) idxs))))
 
 (defn best-candidate [{:keys [field] :as problem}]
-  (let [ratings (js/Map.)]
+  (loop [min-rating ##Inf
+         min-index  nil]
     (doseq [i     known
             :let  [nbs    (aget neighbours i)
-                   value  (parse-long (aget field i))
-                   flags  (count-chars field nbs "F")
-                   rating (- value flags)]
-            ni    nbs
-            :when (identical? "." (aget field ni))]
-      (assoc! ratings ni (min (or (.get ratings ni) ##Inf) rating)))
-    (apply min-key #(or (.get ratings %) ##Inf) (filter #(identical? "." (aget field %)) candidates))))
+                   value  (aget field i)
+                   flags  (count-val field nbs FLAG)
+                   rating (- value flags)]]
+      (when (< rating min-rating)
+        (when-some [ni (core/find #(identical? CLOSED (aget field %)) nbs)]
+          (set! min-rating rating)
+          (set! min-index ni))))
+    (or
+      min-index
+      (core/find #(identical? CLOSED (aget field %)) candidates))))
 
 (defn solve-impl [problem]
   ; (println "exploring" (field-str problem))
@@ -381,8 +388,15 @@
 
     :else
     (or
-      (solve-impl (with-ch (clone-problem problem) candidate "F"))
-      (solve-impl (with-ch (clone-problem problem) candidate "?")))))
+      (solve-impl (with-val (clone-problem problem) candidate FLAG))
+      (solve-impl (with-val (clone-problem problem) candidate SECRET)))))
+
+(defn parse-cell [ch]
+  (case ch
+    "F" FLAG
+    "?" SECRET
+    "." CLOSED
+    (parse-long ch)))
 
 (defn solve [field-w field-h field-flags rules input]
   (set! w field-w)
@@ -412,82 +426,62 @@
                   (+ (* y' w) x'))))))
         arr)))
   (.set neighbours-cache (js/JSON.stringify [w h]) neighbours)
-  (let [field    (.split (str/replace input #"\s" "") "")
-        flagged  (count (filterv #(identical? "F" (aget field %)) idxs))
-        unknown  (count (filterv #(identical? "." (aget field %)) idxs))
+  (let [chars    (.split (str/replace input #"\s" "") "")
+        field    (js/Uint8Array. (map parse-cell chars))
+        flagged  (count (filterv #(identical? FLAG (aget field %)) idxs))
+        unknown  (count (filterv #(identical? CLOSED (aget field %)) idxs))
         problem  (Problem. field flagged unknown (js/Map.) [])]
     (set! known
       (->> idxs
-        (filterv #(<= "0" (aget field %) "8"))))
+        (filterv #(<= 0 (aget field %) 8))))
     (set! candidates
-      (filterv #(identical? "." (aget field %)) idxs))
+      (filterv #(identical? CLOSED (aget field %)) idxs))
     (doseq [cs active-constraints]
       (when-some [init (:init cs)]
         (init problem)))
     (:field (solve-impl problem))))
 
 (defn test []
-  #_(let [problem "..3.....
-                 .......3
-                 ........
-                 .4..3...
-                 .....5..
-                 ........
-                 ..3.....
-                 ..2....."
-        _ (println "Warming up (CLJS)...")
-        t0    (js/performance.now)
-        iters 100
-        _ (dotimes [_ iters]
-            (solve 8 8 26 [:total :vanilla :anti-triplet] problem))
-        _ (println "warmup" (-> (- (js/performance.now) t0) (/ iters)) "ms / solve," iters "iters")
-        _ (println "Solving (CLJS)...")
-        t0        (js/performance.now)
-        iters 100
-        _ (dotimes [_ iters]
-            (solve 8 8 26 [:total :vanilla :anti-triplet] problem))
-        _ (println "solve" (-> (- (js/performance.now) t0) (/ iters)) "ms / solve," iters "iters")])
-
   (doseq [[w h f id problem] [[3 3 4 "[V]3x3-4-test"
-                                 ".2.
+                               ".2.
                                 .?.
                                 1.F"]
-                                [5 5 10 "[V]5x5-10-ZZZZ"
-                                 ".....
+                              [5 5 10 "[V]5x5-10-ZZZZ"
+                               ".....
                                 .8...
                                 ...20
                                 23332
                                 001.."]
-                                [5 5 10 "[V]5x5-10-10181"
-                                 "..2..
+                              [5 5 10 "[V]5x5-10-10181"
+                               "..2..
                                 .3...
                                 .3...
                                 ...2.
                                 ...2."]
-                                #_[6 6 14 "[V]6x6-14-10388"
-                                   "1.....
+                              #_[6 6 14 "[V]6x6-14-10388"
+                                 "1.....
                                 1.....
                                 .....3
                                 2.....
                                 ...55?
                                 ..4.?."]
-                                #_[6 6 14 "[V]6x6-14-10740"
-                                   "......
+                              #_[6 6 14 "[V]6x6-14-10740"
+                                 "......
                                 .6....
                                 .5....
                                 ......
                                 .3....
                                 1....0"]
-                                #_[7 7 20 "[V]7x7-20-11447"
-                                   "?3...1.
+                              #_[7 7 20 "[V]7x7-20-11447"
+                                 "?3...1.
                                 .......
                                 ..4.4..
                                 .4..4..
                                 .5.....
                                 3......
                                 ....0.."]
-                                #_[8 8 26 "[V]8x8-26-10145"
-                                   "..2..3..
+                              #_[8 8 26 "[V]8x8-26-10145"
+                                 "..2..3..
                                 ........
                                 .....2..
                                 ..7.....
@@ -495,8 +489,8 @@
                                 .4......
                                 .5......
                                 ..?.0..."]
-                                [8 8 26 "[V]8x8-26-1388D"
-                                 "........
+                              [8 8 26 "[V]8x8-26-1388D"
+                               "........
                                 .....6..
                                 2.....4.
                                 2.2....1
@@ -504,14 +498,14 @@
                                 ........
                                 2?.42...
                                 0111?.3."]
-                                #_[5 5 10 "[Q]5x5-10-10009"
-                                   "..3..
+                              #_[5 5 10 "[Q]5x5-10-10009"
+                                 "..3..
                                 .....
                                 .3...
                                 .4..2
                                 1...2"]
-                                #_[8 8 26 "[Q]8x8-26-10355"
-                                   ".1.2.2..
+                              #_[8 8 26 "[Q]8x8-26-10355"
+                                 ".1.2.2..
                                 ........
                                 ....4.5.
                                 ......4.
@@ -519,14 +513,14 @@
                                 ........
                                 2....3..
                                 .......2"]
-                                [5 5 10 "[C]5x5-10-test"
-                                   "..33.
+                              [5 5 10 "[C]5x5-10-test"
+                               "..33.
                                 ...4.
                                 .....
                                 .....
                                 .1..."]
-                                #_[8 8 26 "[C]8x8-26-10757"
-                                   "..1.....
+                              #_[8 8 26 "[C]8x8-26-10757"
+                                 "..1.....
                                 .......?
                                 ...1....
                                 .....4.4
@@ -534,14 +528,14 @@
                                 .....?..
                                 ...1....
                                 ........"]
-                                [5 5 10 "[T]5x5-10-7222"
-                                   ".....
+                              [5 5 10 "[T]5x5-10-7222"
+                               ".....
                                 ....4
                                 .....
                                 .....
                                 1.3.."]
-                                #_[8 8 26 "[T]8x8-26-10817"
-                                   "..3.....
+                              #_[8 8 26 "[T]8x8-26-10817"
+                                 "..3.....
                                 .......3
                                 ........
                                 .4..3...
@@ -549,26 +543,85 @@
                                 ........
                                 ..3.....
                                 ..2....."]]
-            :let [t0        (js/performance.now)
-                  problem   (str/replace problem #"\s" "")
+          :let [t0        (js/performance.now)
+                problem   (str/replace problem #"\s" "")
+                dangerous #{}
+                safe      #{}]]
+    (doseq [:let  []
+            y     (range h)
+            x     (range w)
+            :let  [i (+ (* y w) x)]
+            :when (identical? "." (nth problem i))]
+      (let [problem' (string-with problem i "?")]
+        (when-not (solve w h f (core/puzzle-rules id) problem')
+          (conj! dangerous i)))
+      (let [problem' (string-with problem i "F")]
+        (when-not (solve w h f (core/puzzle-rules id) problem')
+          (conj! safe i))))
 
-                  dangerous []
-                  safe      []]]
-      (doseq [:let  []
-              y     (range h)
-              x     (range w)
-              :let  [i (+ (* y w) x)]
-              :when (identical? "." (nth problem i))]
-        (let [problem' (string-with problem i "?")]
-          (when-not (solve w h f (core/puzzle-rules id) problem')
-            (conj! dangerous i)))
-        (let [problem' (string-with problem i "F")]
-          (when-not (solve w h f (core/puzzle-rules id) problem')
-            (conj! safe i))))
+    (let [hinted (mapv
+                   (fn [ch i]
+                     (cond
+                       (<= "0" ch "8")         (parse-long ch)
+                       (identical? "F" ch)     FLAG
+                       (identical? "?" ch)     SECRET
+                       (contains? safe i)      12
+                       (contains? dangerous i) 13
+                       (identical? "." ch)     CLOSED))
+                   problem
+                   (range))]
+      (println id "/" (-> (js/performance.now) (- t0) (* 1000) (js/Math.round) (/ 1000)) "ms" (field-str hinted)))))
 
-      (let [hinted (as-> problem %
-                     (reduce #(string-with %1 %2 "S") % safe)
-                     (reduce #(string-with %1 %2 "D") % dangerous))]
-        (println id "/" (-> (js/performance.now) (- t0) (* 1000) (js/Math.round) (/ 1000)) "ms" (field-str hinted)))))
+(defn bench []
+  (doseq [[w h f id problem]
+          [[8 8 26 "[V]8x8-26-1388D"
+            "........
+             .....6..
+             2.....4.
+             2.2....1
+             ........
+             ........
+             2?.42...
+             0111?.3."]
+           [8 8 26 "[Q]8x8-26-10355"
+            ".1.2.2..
+             ........
+             ....4.5.
+             ......4.
+             .....5..
+             ........
+             2....3..
+             .......2"]
+           [8 8 26 "[C]8x8-26-10757"
+            "..1.....
+             .......?
+             ...1....
+             .....4.4
+             ........
+             .....?..
+             ...1....
+             ........"]
+           [8 8 26 "[T]8x8-26-10817"
+            "..3.....
+             .......3
+             ........
+             .4..3...
+             .....5..
+             ........
+             ..3.....
+             ..2....."]]]
+    (let [rules (core/puzzle-rules id)
+          _     (println "Benching" id "...")
+          t0    (js/performance.now)
+          iters 100
+          _     (dotimes [_ iters]
+                  (solve w h f rules problem))
+          _     (println "  Warmup" (-> (- (js/performance.now) t0) (/ iters)) "ms / solve," iters "iters")
+          t0        (js/performance.now)
+          iters 1000
+          _     (dotimes [_ iters]
+                  (solve w h f rules problem))
+          _     (println "   Solve" (-> (- (js/performance.now) t0) (/ iters)) "ms / solve," iters "iters")])))
 
 #_(test)
+#_(bench)
