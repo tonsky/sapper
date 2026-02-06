@@ -24,9 +24,9 @@
 const std = @import("std");
 
 // Field cell values
-const FLAG: u8 = 9;
-const OPEN: u8 = 10;
-const UNKNOWN: u8 = 11;
+const FLAG: i8 = 9;
+const OPEN: i8 = 10;
+const UNKNOWN: i8 = 11;
 
 const Rules = packed struct {
     total: bool = false,
@@ -35,7 +35,7 @@ const Rules = packed struct {
 };
 
 const Problem = struct {
-    field: []u8,
+    field: []i8,
     w: usize,
     h: usize,
     total_flags: usize,
@@ -69,10 +69,10 @@ const Problem = struct {
     }
 };
 
-fn countNeighbors(problem: *const Problem, idx: usize, val: u8) u8 {
+fn countNeighbors(problem: *const Problem, idx: usize, val: i8) i8 {
     const x = idx % problem.w;
     const y = idx / problem.w;
-    var res: u8 = 0;
+    var res: i8 = 0;
 
     const x_start: usize = if (x > 0) x - 1 else 0;
     const x_end: usize = if (x + 1 < problem.w) x + 2 else problem.w;
@@ -145,78 +145,6 @@ fn antiTripletCheck(problem: *const Problem) bool {
     return true;
 }
 
-fn checkConstraints(problem: *const Problem) bool {
-    if (problem.rules.total and !totalCheck(problem)) return false;
-    if (problem.rules.vanilla and !vanillaCheck(problem)) return false;
-    if (problem.rules.anti_triplet and !antiTripletCheck(problem)) return false;
-    return true;
-}
-
-// fn autoOpen(problem: *Problem, known: []const u8) bool {
-//     const ctx = problem.ctx;
-//     var changed = false;
-//     var known_idx: usize = 0;
-//     while (known_idx < known.len) {
-//         const i = known[known_idx];
-//         const value = problem.field[i];
-//         const unk = countNeighbors(problem.field, ctx, i, UNKNOWN);
-
-//         if (unk == 0) {
-//             known_idx += 1;
-//             continue;
-//         }
-
-//         const fs = countNeighbors(problem.field, ctx, i, FLAG);
-
-//         // All flagged, can open the rest
-//         if (fs == value) {
-//             const x = i % ctx.w;
-//             const y = i / ctx.w;
-//             const x_start: usize = if (x > 0) x - 1 else 0;
-//             const x_end: usize = if (x + 1 < ctx.w) x + 2 else ctx.w;
-//             const y_start: usize = if (y > 0) y - 1 else 0;
-//             const y_end: usize = if (y + 1 < ctx.h) y + 2 else ctx.h;
-
-//             for (y_start..y_end) |ny| {
-//                 for (x_start..x_end) |nx| {
-//                     const nbi = ny * ctx.w + nx;
-//                     if (problem.field[nbi] == UNKNOWN) {
-//                         problem.withVal(nbi, OPEN);
-//                     }
-//                 }
-//             }
-//             known_idx = 0;
-//             changed = true;
-//             continue;
-//         }
-
-//         // Can flag the rest
-//         if (value - fs == unk) {
-//             const x = i % ctx.w;
-//             const y = i / ctx.w;
-//             const x_start: usize = if (x > 0) x - 1 else 0;
-//             const x_end: usize = if (x + 1 < ctx.w) x + 2 else ctx.w;
-//             const y_start: usize = if (y > 0) y - 1 else 0;
-//             const y_end: usize = if (y + 1 < ctx.h) y + 2 else ctx.h;
-
-//             for (y_start..y_end) |ny| {
-//                 for (x_start..x_end) |nx| {
-//                     const nbi = ny * ctx.w + nx;
-//                     if (problem.field[nbi] == UNKNOWN) {
-//                         problem.withVal(nbi, FLAG);
-//                     }
-//                 }
-//             }
-//             known_idx = 0;
-//             changed = true;
-//             continue;
-//         }
-
-//         known_idx += 1;
-//     }
-//     return changed;
-// }
-
 // fn autoFinish(problem: *Problem) bool {
 //     const ctx = problem.ctx;
 
@@ -244,7 +172,7 @@ fn checkConstraints(problem: *const Problem) bool {
 // }
 
 fn bestCandidate(problem: *const Problem) ?u8 {
-    var min_rating: u8 = 255;
+    var min_rating: i8 = 127;
     var min_index: ?u8 = null;
 
     for (problem.known_indices) |i| {
@@ -288,44 +216,126 @@ fn bestCandidate(problem: *const Problem) ?u8 {
     return null;
 }
 
-fn solveImpl(problem: *Problem) bool {
-    // Check constraints
-    if (!checkConstraints(problem)) {
-        return false;
+fn autoOpen(problem: *Problem) bool {
+    const flag_indices_len_before = problem.flag_indices.items.len;
+    const open_indices_len_before = problem.open_indices.items.len;
+
+    for (problem.known_indices) |i| {
+        const value = problem.field[i];
+        const fs = countNeighbors(problem, i, FLAG);
+        const unk = countNeighbors(problem, i, UNKNOWN);
+        if (unk > 0 and (value == fs or value - fs == unk)) {
+            const x: usize = i % problem.w;
+            const y: usize = i / problem.w;
+            const x_start: usize = if (x > 0) x - 1 else 0;
+            const x_end: usize = if (x + 1 < problem.w) x + 2 else problem.w;
+            const y_start: usize = if (y > 0) y - 1 else 0;
+            const y_end: usize = if (y + 1 < problem.h) y + 2 else problem.h;
+
+            for (y_start..y_end) |ny| {
+                for (x_start..x_end) |nx| {
+                    if (nx == x and ny == y) continue;
+                    const nbi = ny * problem.w + nx;
+                    if (problem.field[nbi] != UNKNOWN) continue;
+                    if (value == fs) problem.setOpen(nbi)
+                    else if (value - fs == unk) problem.setFlag(nbi);
+                }
+            }
+        }
     }
 
-    // Leaf - all explored
-    if (problem.unknown_count == 0) {
+    if (autoFinish(problem))
         return true;
+
+    // Undo flags/opens
+    while (problem.flag_indices.items.len > flag_indices_len_before) {
+        const idx = problem.flag_indices.items[problem.flag_indices.items.len - 1];
+        problem.setUnknown(idx);
+    }
+    while (problem.open_indices.items.len > open_indices_len_before) {
+        const idx = problem.open_indices.items[problem.open_indices.items.len - 1];
+        problem.setUnknown(idx);
     }
 
-    // Find best candidate to try
+    return false;
+}
+
+fn autoFinish(problem: *Problem) bool {
+    const flag_indices_len_before = problem.flag_indices.items.len;
+    const open_indices_len_before = problem.open_indices.items.len;
+    const flagged = flag_indices_len_before;
+
+    if (problem.unknown_count > 0) {
+        if (problem.unknown_count == problem.total_flags - flagged) {
+            // Can flag the rest
+            for (0..problem.w * problem.h) |i| {
+                if (problem.field[i] == UNKNOWN) problem.setFlag(i);
+            }
+        } else if (flagged == problem.total_flags) {
+            // Can open the rest
+            for (0..problem.w * problem.h) |i| {
+                if (problem.field[i] == UNKNOWN) problem.setOpen(i);
+            }
+        }
+    }
+
+    if (checkConstraints(problem))
+        return true;
+
+    // Undo
+    while (problem.flag_indices.items.len > flag_indices_len_before) {
+        const idx = problem.flag_indices.items[problem.flag_indices.items.len - 1];
+        problem.setUnknown(idx);
+    }
+    while (problem.open_indices.items.len > open_indices_len_before) {
+        const idx = problem.open_indices.items[problem.open_indices.items.len - 1];
+        problem.setUnknown(idx);
+    }
+
+    return false;
+}
+
+fn checkConstraints(problem: *Problem) bool {
+    if (problem.rules.total and !totalCheck(problem)) return false;
+    if (problem.rules.vanilla and !vanillaCheck(problem)) return false;
+    if (problem.rules.anti_triplet and !antiTripletCheck(problem)) return false;
+
+    if (problem.unknown_count == 0) return true;
+    return diveDeeper(problem);
+}
+
+fn diveDeeper(problem: *Problem) bool {
     const candidate = bestCandidate(problem) orelse return false;
 
     // Try FLAG first
     problem.setFlag(candidate);
-    if (solveImpl(problem)) {
-        return true;
-    }
+    if (autoOpen(problem)) return true;
     problem.setUnknown(candidate);
 
     // Try OPEN
     problem.setOpen(candidate);
-    if (solveImpl(problem)) {
-        return true;
-    }
+    if (autoOpen(problem)) return true;
     problem.setUnknown(candidate);
 
     return false;
 }
 
-fn parseCell(ch: u8) u8 {
+fn parseCell(ch: u8) i8 {
     return switch (ch) {
         'F' => FLAG,
         '?' => OPEN,
         '.' => UNKNOWN,
-        '0'...'8' => ch - '0',
+        '0'...'8' => @intCast(ch - '0'),
         else => UNKNOWN,
+    };
+}
+
+fn cellToChar(val: i8) u8 {
+    if (val >= 0 and val <= 8) return '0' + @as(u8, @intCast(val));
+    return switch (val) {
+        FLAG => 'F',
+        OPEN => '?',
+        else => '.',
     };
 }
 
@@ -354,7 +364,9 @@ fn skipWhitespace(input: []const u8, pos: *usize) void {
 
 /// Parse and solve puzzle
 /// Input format: "[T]8x8-26-1234D\n..1?F.."
-pub fn solve(input: []const u8) bool {
+/// Returns solved field as string "..F?.\n..1F." or null if unsolvable
+/// Result is written into caller-provided `out` buffer
+pub fn solve(input: []const u8, out: []u8) ?[]const u8 {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -378,20 +390,20 @@ pub fn solve(input: []const u8) bool {
     }
 
     // Parse WxH
-    const w = parseNumber(input, &pos) orelse return false;
-    if (pos >= input.len or input[pos] != 'x') return false;
+    const w = parseNumber(input, &pos) orelse return null;
+    if (pos >= input.len or input[pos] != 'x') return null;
     pos += 1; // skip 'x'
-    const h = parseNumber(input, &pos) orelse return false;
+    const h = parseNumber(input, &pos) orelse return null;
 
     // Skip '-'
-    if (pos >= input.len or input[pos] != '-') return false;
+    if (pos >= input.len or input[pos] != '-') return null;
     pos += 1;
 
     // Parse total flags
-    const total_flags = parseNumber(input, &pos) orelse return false;
+    const total_flags = parseNumber(input, &pos) orelse return null;
 
     // Skip '-'
-    if (pos >= input.len or input[pos] != '-') return false;
+    if (pos >= input.len or input[pos] != '-') return null;
     pos += 1;
 
     // Skip puzzle id (alphanumeric)
@@ -404,13 +416,13 @@ pub fn solve(input: []const u8) bool {
 
     // Allocate field
     const size = w * h;
-    const field = allocator.alloc(u8, size) catch return false;
+    const field = allocator.alloc(i8, size) catch return null;
     var unknown_count: usize = 0;
-    var flag_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return false;
-    var open_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return false;
+    var flag_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null;
+    var open_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null;
 
-    var known_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return false;
-    var constrained_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return false;
+    var known_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null;
+    var constrained_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null;
 
     var idx: usize = 0;
     while (pos < input.len and idx < size) {
@@ -440,7 +452,7 @@ pub fn solve(input: []const u8) bool {
         pos += 1;
     }
 
-    if (idx != size) return false; // Not enough cells
+    if (idx != size) return null; // Not enough cells
 
     var problem = Problem{
         .field = field,
@@ -455,7 +467,21 @@ pub fn solve(input: []const u8) bool {
         .open_indices = open_indices,
     };
 
-    return solveImpl(&problem);
+    if (!autoOpen(&problem)) return null;
+
+    // Build result string into caller's buffer
+    var ri: usize = 0;
+    for (0..h) |y| {
+        if (y > 0) {
+            out[ri] = '\n';
+            ri += 1;
+        }
+        for (0..w) |x| {
+            out[ri] = cellToChar(field[y * w + x]);
+            ri += 1;
+        }
+    }
+    return out[0..ri];
 }
 
 // Benchmark
@@ -500,11 +526,13 @@ pub fn main() !void {
     for (test_cases) |tc| {
         try stdout.print("Benching {s}...\n", .{tc.name});
 
+        var buf: [256]u8 = undefined;
+
         // Warmup
         const warmup_iters: usize = 1000;
         var timer = try std.time.Timer.start();
         for (0..warmup_iters) |_| {
-            _ = solve(tc.input);
+            _ = solve(tc.input, &buf);
         }
         const warmup_ns = timer.read();
         try stdout.print("  Warmup: {d:.3} ms/solve, {d} iters\n", .{
@@ -516,46 +544,50 @@ pub fn main() !void {
         const bench_iters: usize = 10000;
         timer.reset();
         for (0..bench_iters) |_| {
-            _ = solve(tc.input);
+            _ = solve(tc.input, &buf);
         }
         const bench_ns = timer.read();
         try stdout.print("  Bench:  {d:.3} ms/solve, {d} iters\n", .{
             @as(f64, @floatFromInt(bench_ns)) / @as(f64, @floatFromInt(bench_iters)) / 1_000_000.0,
             bench_iters,
         });
-
-        // Verify it actually solves
-        const result = solve(tc.input);
-        try stdout.print("  Solved: {}\n\n", .{result});
     }
 }
 
-test "solve vanilla puzzle" {
-    const input =
-        \\[V]8x8-26-1388D
-        \\........
-        \\.....6..
-        \\2.....4.
-        \\2.2....1
-        \\........
-        \\........
-        \\2?.42...
-        \\0111?.3.
-    ;
-    try std.testing.expect(solve(input));
-}
+test "solve puzzles from tests.txt" {
+    const content = std.fs.cwd().readFileAlloc(std.testing.allocator, "dev/tests.txt", 1024 * 1024) catch |err| {
+        std.debug.print("\nFailed to read dev/tests.txt: {}\n", .{err});
+        return err;
+    };
+    defer std.testing.allocator.free(content);
+    var buf: [256]u8 = undefined;
+    var pos: usize = 0;
+    var test_count: usize = 0;
 
-test "solve anti-triplet puzzle" {
-    const input =
-        \\[T]8x8-26-10817
-        \\..3.....
-        \\.......3
-        \\........
-        \\.4..3...
-        \\.....5..
-        \\........
-        \\..3.....
-        \\..2.....
-    ;
-    try std.testing.expect(solve(input));
+    while (std.mem.indexOfPos(u8, content, pos, "Given:")) |given_idx| {
+        pos = given_idx + "Given:".len;
+        const expect_idx = std.mem.indexOfPos(u8, content, pos, "Expect:") orelse break;
+        const input = std.mem.trim(u8, content[pos..expect_idx], " \n\r");
+
+        pos = expect_idx + "Expect:".len;
+        const next_given = std.mem.indexOfPos(u8, content, pos, "Given:");
+        const expect_end = next_given orelse content.len;
+        const expected = std.mem.trim(u8, content[pos..expect_end], " \n\r");
+
+        pos = expect_end;
+
+        const result = solve(input, &buf) orelse {
+            std.debug.print("\nFAIL: solve returned null for: {s}\n", .{input[0..@min(input.len, 40)]});
+            return error.TestUnexpectedResult;
+        };
+
+        std.testing.expectEqualStrings(expected, result) catch {
+            std.debug.print("\nFAIL: {s}\n", .{input[0..@min(input.len, 40)]});
+            return error.TestUnexpectedResult;
+        };
+
+        test_count += 1;
+    }
+
+    try std.testing.expect(test_count > 0);
 }
