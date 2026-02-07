@@ -1,8 +1,8 @@
 const std = @import("std");
 
-const FLAG: u8       = 0b00010000;
-const OPEN: u8       = 0b00100000;
-const UNKNOWN: u8    = 0b01000000;
+const FLAG: u8 = 0b00010000;
+const OPEN: u8 = 0b00100000;
+const UNKNOWN: u8 = 0b01000000;
 const KNOWN_MASK: u8 = 0b00001111;
 
 const Rules = packed struct {
@@ -28,6 +28,7 @@ const Problem = struct {
     last_checked_open_idx: usize,
     neighbor_masks: [64]u64,
     visualize: bool,
+    erase: bool,
 
     fn oneof(self: *Problem, x: usize, y: usize, mask: u8) bool {
         return self.field[(y * self.w) + x] & mask != 0;
@@ -109,10 +110,10 @@ fn quadCheck(problem: *Problem) bool {
     //     if (problem.oneof(x + 1, y + 1, mask)) continue;
     //     return false;
     // }
-    
+
     for (problem.open_indices.items[problem.last_checked_open_idx..]) |idx| {
         const x: usize = idx % w;
-        const y: usize = idx / w;   
+        const y: usize = idx / w;
         if (x > 0 and y > 0 and !problem.oneof(x - 1, y, mask) and !problem.oneof(x - 1, y - 1, mask) and !problem.oneof(x, y - 1, mask)) return false;
         if (x < w - 1 and y > 0 and !problem.oneof(x, y - 1, mask) and !problem.oneof(x + 1, y - 1, mask) and !problem.oneof(x + 1, y, mask)) return false;
         if (x < w - 1 and y < h - 1 and !problem.oneof(x + 1, y, mask) and !problem.oneof(x + 1, y + 1, mask) and !problem.oneof(x, y + 1, mask)) return false;
@@ -125,22 +126,26 @@ fn quadCheck(problem: *Problem) bool {
 fn connectedCheck(problem: *const Problem) bool {
     // Flagging a cell doesn't change connected proprerty
     if (problem.last_checked_open_idx == problem.open_indices.items.len) return true;
-    
+
     const field = problem.field;
     const size = problem.w * problem.h;
-    const cell_mask: u8 = FLAG | UNKNOWN;
+    const passable_mask: u8 = FLAG | UNKNOWN;
 
-    // Build bitmask of all FLAG|UNKNOWN cells
-    var target: u64 = 0;
+    // Build bitmask of FLAG cells and passable (FLAG|UNKNOWN) cells
+    var flags: u64 = 0;
+    var passable: u64 = 0;
     for (0..size) |i| {
-        if (field[i] & cell_mask != 0) {
-            target |= @as(u64, 1) << @intCast(i);
+        if (field[i] & passable_mask != 0) {
+            passable |= @as(u64, 1) << @intCast(i);
+        }
+        if (field[i] == FLAG) {
+            flags |= @as(u64, 1) << @intCast(i);
         }
     }
-    if (target == 0) return true;
+    if (flags == 0) return true;
 
-    // Flood fill from lowest set bit
-    var visited: u64 = target & (~target +% 1); // isolate lowest bit
+    // Flood fill from lowest FLAG bit, moving through passable cells
+    var visited: u64 = flags & (~flags +% 1); // isolate lowest flag bit
     while (true) {
         // Expand all visited cells' neighbors at once
         var expanded: u64 = 0;
@@ -150,11 +155,12 @@ fn connectedCheck(problem: *const Problem) bool {
             expanded |= problem.neighbor_masks[bit];
             remaining &= remaining - 1; // clear lowest bit
         }
-        expanded &= target & ~visited;
+        expanded &= passable & ~visited;
         if (expanded == 0) break;
         visited |= expanded;
     }
-    return visited == target;
+    // All flags must be reachable
+    return flags & visited == flags;
 }
 
 // [T] Flags may not form row of three orthogonally or diagonally
@@ -205,7 +211,7 @@ fn antiTripletCheck(problem: *const Problem) bool {
 
 fn eraseField(problem: *const Problem) void {
     var buf: [16]u8 = undefined;
-    const esc = std.fmt.bufPrint(&buf, "\x1b[{d}A", .{problem.h}) catch unreachable;
+    const esc = std.fmt.bufPrint(&buf, "\x1b[{d}A", .{problem.h + 1}) catch unreachable;
     var bw = std.fs.File.stdout().writer(&.{});
     bw.interface.writeAll(esc) catch {};
 }
@@ -231,12 +237,12 @@ fn printField(problem: *const Problem) void {
     const str = fieldToStr(problem, &buf);
     var bw = std.fs.File.stdout().writer(&.{});
     bw.interface.writeAll(str) catch {};
-    bw.interface.writeAll("\n") catch {};
+    bw.interface.writeAll("\n\n") catch {};
 }
 
 fn beginSolving(problem: *Problem) bool {
     if (problem.visualize) {
-        eraseField(problem);
+        if (problem.erase) eraseField(problem);
         printField(problem);
         std.Thread.sleep(50_000_000); // 50ms per frame
     }
@@ -264,8 +270,7 @@ fn autoOpen(problem: *Problem) bool {
                     if (nx == x and ny == y) continue;
                     const nbi = ny * problem.w + nx;
                     if (problem.field[nbi] != UNKNOWN) continue;
-                    if (value == fs) problem.setOpen(nbi)
-                    else if (value - fs == unk) problem.setFlag(nbi);
+                    if (value == fs) problem.setOpen(nbi) else if (value - fs == unk) problem.setFlag(nbi);
                 }
             }
         }
@@ -335,7 +340,7 @@ fn checkConstraints(problem: *Problem) bool {
 fn bestCandidate(problem: *const Problem) ?usize {
     var min_rating: f64 = 1000;
     var min_index: ?usize = null;
-    
+
     rating: {
         // [C] Find a spot near the flag, preferably also next to a known cell
         if (problem.rules.connected) {
@@ -343,14 +348,14 @@ fn bestCandidate(problem: *const Problem) ?usize {
                 if (problem.field[i] != UNKNOWN) continue;
                 const flags = countNeighbors(problem, i, FLAG);
                 if (flags == 0) continue;
-                
+
                 const knowns = countNeighbors(problem, i, KNOWN_MASK);
                 if (knowns > 0) {
                     min_rating = 1;
                     min_index = i;
                     break :rating;
                 }
-                
+
                 const unknowns = countNeighbors(problem, i, UNKNOWN);
                 const rating = @as(f64, @floatFromInt(flags)) + @as(f64, @floatFromInt(unknowns));
                 if (rating > 0 and rating < min_rating) {
@@ -413,13 +418,13 @@ fn bestCandidate(problem: *const Problem) ?usize {
                             }
                         }
                     }
-                    
+
                     if (min_rating <= 1) break :rating;
                 }
             }
         }
     }
-    
+
     if (min_index) |idx| {
         return idx;
     }
@@ -463,7 +468,7 @@ fn parseCell(ch: u8) u8 {
         '?', '-' => OPEN,
         '.' => UNKNOWN,
         '0'...'8' => @intCast(ch - '0'),
-        else => unreachable
+        else => unreachable,
     };
 }
 
@@ -481,7 +486,7 @@ fn cellToChar(val: u8) []const u8 {
         FLAG => "F",
         OPEN => "-",
         UNKNOWN => ".",
-        else => unreachable
+        else => unreachable,
     };
 }
 
@@ -508,7 +513,15 @@ fn skipWhitespace(input: []const u8, pos: *usize) void {
     }
 }
 
-fn initProblem(input: []const u8, allocator: std.mem.Allocator) ?Problem {
+const Meta = struct {
+    rules: Rules,
+    w: usize,
+    h: usize,
+    total_flags: usize,
+    pos: usize,
+};
+
+fn parseId(input: []const u8) ?Meta {
     var pos: usize = 0;
 
     // Parse rule indicators [T], [V], [T*], etc.
@@ -556,27 +569,25 @@ fn initProblem(input: []const u8, allocator: std.mem.Allocator) ?Problem {
     // Skip whitespace before field
     skipWhitespace(input, &pos);
 
-    // Allocate field
+    return Meta{
+        .rules = rules,
+        .w = w,
+        .h = h,
+        .total_flags = total_flags,
+        .pos = pos,
+    };
+}
+
+fn buildProblem(field: []u8, w: usize, h: usize, total_flags: usize, rules: Rules, allocator: std.mem.Allocator) ?Problem {
     const size = w * h;
-    const field = allocator.alloc(u8, size) catch return null;
     var unknown_count: usize = 0;
     var flag_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null;
     var open_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null;
-
     var known_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null;
     var constrained_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null;
 
-    var idx: usize = 0;
-    while (pos < input.len and idx < size) {
-        const ch = input[pos];
-        if (isWhitespace(ch)) {
-            pos += 1;
-            continue;
-        }
-
-        const val = parseCell(ch);
-        field[idx] = val;
-
+    for (0..size) |idx| {
+        const val = field[idx];
         if (val == FLAG) {
             flag_indices.appendAssumeCapacity(@intCast(idx));
         } else if (val == OPEN) {
@@ -585,17 +596,11 @@ fn initProblem(input: []const u8, allocator: std.mem.Allocator) ?Problem {
             unknown_count += 1;
             constrained_indices.appendAssumeCapacity(@intCast(idx));
         }
-
         if (val <= 8) {
             known_indices.appendAssumeCapacity(@intCast(idx));
             open_indices.appendAssumeCapacity(@intCast(idx));
         }
-
-        idx += 1;
-        pos += 1;
     }
-
-    if (idx != size) return null; // Not enough cells
 
     // Precompute neighbor bitmasks for connected check
     var neighbor_masks: [64]u64 = undefined;
@@ -635,148 +640,284 @@ fn initProblem(input: []const u8, allocator: std.mem.Allocator) ?Problem {
         .last_checked_open_idx = 0,
         .neighbor_masks = neighbor_masks,
         .visualize = false,
+        .erase = true,
     };
 }
 
-/// Parse and solve puzzle
-/// Input format: "[T]8x8-26-1234D\n..1?F.."
-/// Returns solved field as string "..F?.\n..1F." or null if unsolvable
-/// Result is written into caller-provided `out` buffer
+// Parses user-facing format like
+//
+//   [V]5x5-10-10181 ..2.. .3... .3... ...2. ...2.
+//
+// . means uknown, - means open, F means flag, number is number of mines
+fn parsePlayerProblem(input: []const u8, allocator: std.mem.Allocator) ?Problem {
+    const meta = parseId(input) orelse return null;
+    var pos = meta.pos;
+    const w = meta.w;
+    const h = meta.h;
+    const size = w * h;
+    const field = allocator.alloc(u8, size) catch return null;
+
+    var idx: usize = 0;
+    while (pos < input.len and idx < size) {
+        const ch = input[pos];
+        if (isWhitespace(ch)) {
+            pos += 1;
+            continue;
+        }
+        field[idx] = parseCell(ch);
+        idx += 1;
+        pos += 1;
+    }
+
+    if (idx != size) return null; // Not enough cells
+
+    return buildProblem(field, w, h, meta.total_flags, meta.rules, allocator);
+}
+
+// Parses user-facing format like
+//
+//   [C]5x5-10-1458D qfOOffffOfqoqfooqfqooOqff
+//
+// q means unknown open, f means unknown flag, o means unknown known,
+// Q means open, F means flag, O means known (will be replaced with number of mines)
+fn parseRawProblem(line: []const u8, out: []u8) ?[]const u8 {
+    const meta = parseId(line) orelse return null;
+    const w = meta.w;
+    const h = meta.h;
+    const size = w * h;
+
+    var field_end = meta.pos;
+    while (field_end < line.len and !isWhitespace(line[field_end])) field_end += 1;
+    const encoded = line[meta.pos..field_end];
+    if (encoded.len != size) return null;
+
+    var field: [64]u8 = undefined;
+
+    // Step 1: f and F → FLAG, O → marker (0x80), rest → OPEN
+    for (0..size) |i| {
+        field[i] = switch (encoded[i]) {
+            'f', 'F' => FLAG,
+            'O' => 0x80,
+            else => OPEN,
+        };
+    }
+
+    // Step 2: Replace O markers with count of neighbouring FLAGs
+    const tmp = Problem{
+        .field = field[0..size],
+        .w = w,
+        .h = h,
+        .total_flags = undefined,
+        .rules = undefined,
+        .known_indices = undefined,
+        .constrained_indices = undefined,
+        .unknown_count = undefined,
+        .flag_indices = undefined,
+        .last_checked_flag_idx = undefined,
+        .open_indices = undefined,
+        .last_checked_open_idx = undefined,
+        .neighbor_masks = undefined,
+        .visualize = undefined,
+        .erase = undefined,
+    };
+    for (0..size) |i| {
+        if (field[i] != 0x80) continue;
+        field[i] = @intCast(countNeighbors(&tmp, i, FLAG));
+    }
+
+    // Step 3: all lowercase → UNKNOWN (after O counting is done)
+    for (0..size) |i| {
+        if (encoded[i] >= 'a' and encoded[i] <= 'z') field[i] = UNKNOWN;
+    }
+
+    // Write standard format: header + space + field chars
+    var id_end = meta.pos;
+    while (id_end > 0 and isWhitespace(line[id_end - 1])) id_end -= 1;
+    @memcpy(out[0..id_end], line[0..id_end]);
+    var len = id_end;
+    out[len] = ' ';
+    len += 1;
+    for (0..size) |i| {
+        out[len] = cellToChar(field[i])[0];
+        len += 1;
+    }
+    return out[0..len];
+}
+
 pub fn solve(input: []const u8, out: []u8) ?[]const u8 {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
-    var problem = initProblem(input, arena.allocator()) orelse return null;
+    var problem = parsePlayerProblem(input, arena.allocator()) orelse return null;
 
     if (!beginSolving(&problem)) return null;
 
     return fieldToStr(&problem, out);
 }
 
-const builtin_puzzles = [_][]const u8{
-    \\[V]8x8-26-1388D
-    \\........
-    \\.....6..
-    \\2.....4.
-    \\2.2....1
-    \\........
-    \\........
-    \\2-.42...
-    \\0111-.3.
-    ,
-    \\[V]8x8-26-7467
-    \\.3......
-    \\.3FF4...
-    \\1-35F..2
-    \\.11FF...
-    \\2234.44.
-    \\.F4F.24.
-    \\..5.-..F
-    \\.....F3-
-    ,
-    \\[Q]8x8-26-10355
-    \\.1.2.2..
-    \\........
-    \\....4.5.
-    \\......4.
-    \\.....5..
-    \\........
-    \\2....3..
-    \\.......2
-    ,
-    \\[Q]8x8-26-12056
-    \\-FF.F31-
-    \\F6F.F-F-
-    \\F4F.....
-    \\243.....
-    \\..F.443.
-    \\...3....
-    \\........
-    \\......--
-    ,
-    \\[C]8x8-26-10757
-    \\..1.....
-    \\.......-
-    \\...1....
-    \\.....4.4
-    \\........
-    \\.....-..
-    \\...1....
-    \\........
-    ,
-    \\[C]8x8-26-12801
-    \\........
-    \\.3.2....
-    \\.3......
-    \\......3.
-    \\........
-    \\...4..3.
-    \\........
-    \\.....2..
-    ,
-    \\[T]8x8-26-10817
-    \\..3.....
-    \\.......3
-    \\........
-    \\.4..3...
-    \\.....5..
-    \\........
-    \\..3.....
-    \\..2.....
-    ,
-    \\[T]8x8-26-11654
-    \\2-F.....
-    \\FF4F....
-    \\4.3.4...
-    \\F.23....
-    \\-5F4....
-    \\1FF-....
-    \\3-4.....
-    \\FF2.....
-    ,
-};
+// Benchmark solving puzzles. Invoke as:
+//
+//     solver bench [--iters N] --puzzle "..."
+//
+fn benchOne(input: []const u8, iters: usize, stdout: anytype) !void {
+    const name = if (std.mem.indexOfAny(u8, input, " \n")) |ws| input[0..ws] else input;
+    try stdout.print("{s}", .{name});
+    var buf: [256]u8 = undefined;
+    // Warmup
+    for (0..iters) |_| {
+        _ = solve(input, &buf);
+    }
+    var timer = try std.time.Timer.start();
+    for (0..iters) |_| {
+        _ = solve(input, &buf);
+    }
+    const bench_ns = timer.read();
+    try stdout.print("\t{d:.3} ms/solve\t{d} iters\n", .{
+        @as(f64, @floatFromInt(bench_ns)) / @as(f64, @floatFromInt(iters)) / 1_000_000.0,
+        iters,
+    });
+}
 
-fn bench(puzzles: []const []const u8, iters: usize, stdout: anytype) !void {
-    for (puzzles) |input| {
-        const name = if (std.mem.indexOfAny(u8, input, " \n")) |ws| input[0..ws] else input;
-        try stdout.print("{s}", .{name});
-        var buf: [256]u8 = undefined;
-        // Warmup
-        for (0..iters) |_| {
-            _ = solve(input, &buf);
-        }
-        var timer = try std.time.Timer.start();
-        for (0..iters) |_| {
-            _ = solve(input, &buf);
-        }
-        const bench_ns = timer.read();
-        try stdout.print("\t{d:.3} ms/solve\t{d} iters\n", .{
-            @as(f64, @floatFromInt(bench_ns)) / @as(f64, @floatFromInt(iters)) / 1_000_000.0,
-            iters,
-        });
+// Benchmark solving puzzles. Invoke as:
+//
+//     solver bench [--iters N]
+//
+fn benchAll(iters: usize, stdout: anytype) !void {
+    const content = std.fs.cwd().readFileAlloc(std.heap.page_allocator, "dev/tests.txt", 1024 * 1024) catch |err| {
+        try stdout.print("Failed to read dev/tests.txt: {}\n", .{err});
+        return;
+    };
+    defer std.heap.page_allocator.free(content);
+
+    var pos: usize = 0;
+    while (std.mem.indexOfPos(u8, content, pos, "Given:")) |given_idx| {
+        pos = given_idx + "Given:".len;
+        const expect_idx = std.mem.indexOfPos(u8, content, pos, "Expect:") orelse break;
+        const input = std.mem.trim(u8, content[pos..expect_idx], " \n\r");
+        pos = expect_idx;
+        try benchOne(input, iters, stdout);
     }
 }
 
-fn visualize(input: []const u8) void {
+// Visualize solving a single puzzle. Invoke as:
+//
+//     solver visualize --puzzle "..." [--erase false]
+//
+fn visualize(input: []const u8, erase: bool) void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
-    var problem = initProblem(input, arena.allocator()) orelse {
+    var problem = parsePlayerProblem(input, arena.allocator()) orelse {
         var bw = std.fs.File.stdout().writer(&.{});
         bw.interface.writeAll("Failed to parse puzzle\n") catch {};
         return;
     };
     problem.visualize = true;
+    problem.erase = erase;
     printField(&problem);
 
     const solved = beginSolving(&problem);
 
-    eraseField(&problem);
+    if (erase) eraseField(&problem);
     if (solved) {
         printField(&problem);
     } else {
         var stdout = std.fs.File.stdout().writer(&.{});
         stdout.interface.writeAll("No solution found\n") catch {};
+    }
+}
+
+// Solve all puzzles from public/puzzles. Invoke as:
+//
+//     solver solve-all
+//
+fn solveAll(stdout: anytype) !void {
+    const allocator = std.heap.page_allocator;
+    var dir = std.fs.cwd().openDir("public/puzzles", .{ .iterate = true }) catch |err| {
+        try stdout.print("Failed to open public/puzzles: {}\n", .{err});
+        return;
+    };
+    defer dir.close();
+
+    // Collect .txt filenames
+    var files = try std.ArrayList([]const u8).initCapacity(allocator, 16);
+    defer {
+        for (files.items) |name| allocator.free(name);
+        files.deinit(allocator);
+    }
+
+    var it = dir.iterate();
+    while (try it.next()) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.name, ".txt")) continue;
+        const name = try allocator.dupe(u8, entry.name);
+        try files.append(allocator, name);
+    }
+
+    std.mem.sort([]const u8, files.items, {}, struct {
+        fn f(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.order(u8, a, b) == .lt;
+        }
+    }.f);
+
+    for (files.items) |filename| {
+        const content = dir.readFileAlloc(allocator, filename, 10 * 1024 * 1024) catch |err| {
+            try stdout.print("{s}: failed to read: {}\n", .{ filename, err });
+            continue;
+        };
+        defer allocator.free(content);
+
+        var timer = try std.time.Timer.start();
+        var solved: usize = 0;
+        var failed: usize = 0;
+
+        var line_iter = std.mem.splitScalar(u8, content, '\n');
+        while (line_iter.next()) |line| {
+            if (line.len == 0) continue;
+
+            var decoded: [256]u8 = undefined;
+            const puzzle_str = parseRawProblem(line, &decoded) orelse {
+                failed += 1;
+                const id_end = std.mem.indexOfAny(u8, line, " \t") orelse line.len;
+                try stdout.print("  PARSE ERROR: {s}\n", .{line[0..id_end]});
+                continue;
+            };
+
+            var buf: [512]u8 = undefined;
+            var puzzle_timer = try std.time.Timer.start();
+            const result = solve(puzzle_str, &buf);
+            const puzzle_ns = puzzle_timer.read();
+            const puzzle_ms = @as(f64, @floatFromInt(puzzle_ns)) / 1_000_000.0;
+            if (result != null) {
+                solved += 1;
+                if (puzzle_ms > 1.0) {
+                    const id_end = std.mem.indexOfAny(u8, line, " \t") orelse line.len;
+                    try stdout.print("  SLOW: {s}\t{d:.1} ms\n", .{ line[0..id_end], puzzle_ms });
+                }
+            } else {
+                failed += 1;
+                const id_end = std.mem.indexOfAny(u8, line, " \t") orelse line.len;
+                try stdout.print("  NO SOLUTION: {s}\n", .{line[0..id_end]});
+                try stdout.print("  decoded: {s}\n", .{puzzle_str});
+                // Print parsed field
+                var arena = std.heap.ArenaAllocator.init(allocator);
+                defer arena.deinit();
+                if (parsePlayerProblem(puzzle_str, arena.allocator())) |p| {
+                    var fbuf: [512]u8 = undefined;
+                    try stdout.print("  field:\n{s}\n", .{fieldToStr(&p, &fbuf)});
+                } else {
+                    try stdout.print("  parsePlayerProblem returned null\n", .{});
+                }
+            }
+        }
+
+        const elapsed_ns = timer.read();
+        const elapsed_ms = @as(f64, @floatFromInt(elapsed_ns)) / 1_000_000.0;
+        if (failed > 0) {
+            try stdout.print("{s}\t{d} solved\t{d} FAILED\t{d:.1} ms\n", .{ filename, solved, failed, elapsed_ms });
+        } else {
+            try stdout.print("{s}\t{d} solved\t{d:.1} ms\n", .{ filename, solved, elapsed_ms });
+        }
     }
 }
 
@@ -788,13 +929,14 @@ pub fn main() !void {
     defer std.process.argsFree(std.heap.page_allocator, args);
 
     if (args.len < 2) {
-        try stdout.print("Usage: solver bench [--puzzle \"...\"] [--iters N]\n       solver visualize --puzzle \"...\"\n", .{});
+        try stdout.print("Usage: solver bench [--puzzle \"...\"] [--iters N]\n       solver visualize --puzzle \"...\"\n       solver solve-all\n", .{});
         return;
     }
 
     const command = args[1];
     var iters: usize = 1000;
     var puzzle: ?[]const u8 = null;
+    var erase: bool = true;
 
     var i: usize = 2;
     while (i < args.len) : (i += 1) {
@@ -815,6 +957,13 @@ pub fn main() !void {
                 return;
             }
             puzzle = args[i];
+        } else if (std.mem.eql(u8, args[i], "--erase")) {
+            i += 1;
+            if (i >= args.len) {
+                try stdout.print("--erase requires true or false\n", .{});
+                return;
+            }
+            erase = std.mem.eql(u8, args[i], "true");
         } else {
             try stdout.print("Unknown argument: {s}\n", .{args[i]});
             return;
@@ -823,17 +972,33 @@ pub fn main() !void {
 
     if (std.mem.eql(u8, command, "bench")) {
         if (puzzle) |p| {
-            const one = [1][]const u8{p};
-            try bench(&one, iters, stdout);
+            try benchOne(p, iters, stdout);
         } else {
-            try bench(&builtin_puzzles, iters, stdout);
+            try benchAll(iters, stdout);
         }
     } else if (std.mem.eql(u8, command, "visualize")) {
         if (puzzle) |p| {
-            visualize(p);
+            visualize(p, erase);
         } else {
             try stdout.print("visualize requires --puzzle\n", .{});
         }
+    } else if (std.mem.eql(u8, command, "solve")) {
+        // Solve a puzzle and print solution. Invoke as:
+        //
+        //     solver solve --puzzle "..."
+        //
+        if (puzzle) |p| {
+            var buf: [512]u8 = undefined;
+            if (solve(p, &buf)) |result| {
+                try stdout.print("{s}\n", .{result});
+            } else {
+                try stdout.print("No solution found\n", .{});
+            }
+        } else {
+            try stdout.print("solve requires --puzzle\n", .{});
+        }
+    } else if (std.mem.eql(u8, command, "solve-all")) {
+        try solveAll(stdout);
     } else {
         try stdout.print("Unknown command: {s}\n", .{command});
     }
