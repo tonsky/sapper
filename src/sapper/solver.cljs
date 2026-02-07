@@ -106,10 +106,10 @@
   (loop [y 0
          x 0]
     (cond+
-      (>= x (- w 2))
+      (>= x (- w 1))
       (recur (inc y) 0)
 
-      (>= y (- h 2))
+      (>= y (- h 1))
       true
 
       (and

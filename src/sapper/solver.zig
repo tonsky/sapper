@@ -1,41 +1,18 @@
-//! Minesweeper constraint solver ported from ClojureScript
-//!
-//! Implements three constraint checks:
-//! - total-check: Ensures flag count stays within bounds
-//! - vanilla-check: Ensures numbered cells have valid neighbor counts
-//! - anti-triplet-check: Ensures no three flags in a row (horizontal, vertical, diagonal)
-//!
-//! Build and run benchmark:
-//!   zig build-exe solver.zig -O ReleaseFast && ./solver
-//!
-//! Run tests:
-//!   zig test solver.zig
-//!
-//! Input format: "[T]8x8-26-1234D\n..1?F..\n..." where:
-//!   [T], [V], [T*] etc = rule indicators (multiple allowed)
-//!   8x8 = width x height
-//!   26 = total flags
-//!   1234D = puzzle id (ignored)
-//!   . = unknown cell
-//!   F = flagged cell (mine)
-//!   ? = confirmed safe (opened) cell
-//!   0-8 = numbered cell showing adjacent mine count
-
 const std = @import("std");
 
-// Field cell values
-const FLAG: i8 = 9;
-const OPEN: i8 = 10;
-const UNKNOWN: i8 = 11;
+const FLAG: u8    = 0b00010000;
+const OPEN: u8    = 0b00100000;
+const UNKNOWN: u8 = 0b01000000;
 
 const Rules = packed struct {
     total: bool = false,
     vanilla: bool = false,
     anti_triplet: bool = false,
+    quad: bool = false,
 };
 
 const Problem = struct {
-    field: []i8,
+    field: []u8,
     w: usize,
     h: usize,
     total_flags: usize,
@@ -44,7 +21,13 @@ const Problem = struct {
     constrained_indices: []const u8,
     unknown_count: usize,
     flag_indices: std.ArrayList(u8),
+    last_checked_flag_idx: usize,
     open_indices: std.ArrayList(u8),
+    last_checked_open_idx: usize,
+
+    fn oneof(self: *Problem, x: usize, y: usize, mask: u8) bool {
+        return self.field[(y * self.w) + x] & mask != 0;
+    }
 
     fn setFlag(self: *Problem, i: usize) void {
         self.field[i] = FLAG;
@@ -88,7 +71,7 @@ fn countNeighbors(problem: *const Problem, idx: usize, val: i8) i8 {
     return res;
 }
 
-// [*] Count amount of mines
+// [*] Total amount of flags across the entire field
 fn totalCheck(problem: *const Problem) bool {
     const flagged = problem.flag_indices.items.len;
     return flagged <= problem.total_flags and
@@ -107,6 +90,33 @@ fn vanillaCheck(problem: *const Problem) bool {
     return true;
 }
 
+// [Q] Every 2x2 area must contain at least one flag
+fn quadCheck(problem: *Problem) bool {
+    const mask: u8 = FLAG | UNKNOWN;
+    const w = problem.w;
+    const h = problem.h;
+    // for (problem.constrained_indices) |idx| {
+    //     const x: usize = idx % w;
+    //     const y: usize = idx / w;
+    //     if (x == w - 1 or y == h - 1) continue;
+    //     if (problem.oneof(x, y, mask)) continue;
+    //     if (problem.oneof(x + 1, y, mask)) continue;
+    //     if (problem.oneof(x, y + 1, mask)) continue;
+    //     if (problem.oneof(x + 1, y + 1, mask)) continue;
+    //     return false;
+    // }
+    
+    for (problem.open_indices.items[problem.last_checked_open_idx..]) |idx| {
+        const x: usize = idx % w;
+        const y: usize = idx / w;   
+        if (x > 0 and y > 0 and !problem.oneof(x - 1, y, mask) and !problem.oneof(x - 1, y - 1, mask) and !problem.oneof(x, y - 1, mask)) return false;
+        if (x < w - 1 and y > 0 and !problem.oneof(x, y - 1, mask) and !problem.oneof(x + 1, y - 1, mask) and !problem.oneof(x + 1, y, mask)) return false;
+        if (x < w - 1 and y < h - 1 and !problem.oneof(x + 1, y, mask) and !problem.oneof(x + 1, y + 1, mask) and !problem.oneof(x, y + 1, mask)) return false;
+        if (x > 0 and y < h - 1 and !problem.oneof(x, y + 1, mask) and !problem.oneof(x - 1, y + 1, mask) and !problem.oneof(x - 1, y, mask)) return false;
+    }
+    return true;
+}
+
 // [T] Flags may not form row of three orthogonally or diagonally
 fn antiTripletCheck(problem: *const Problem) bool {
     const flag_indices = problem.flag_indices.items;
@@ -114,28 +124,36 @@ fn antiTripletCheck(problem: *const Problem) bool {
         const y = idx / problem.w;
         const x = idx % problem.w;
 
-        // FFF horizontal
+        // FFF
+        // ...
+        // ...
         if (x + 2 < problem.w) {
             if (problem.field[idx + 1] == FLAG and problem.field[idx + 2] == FLAG) {
                 return false;
             }
         }
 
-        // FFF vertical
+        // F..
+        // F..
+        // F..
         if (y + 2 < problem.h) {
             if (problem.field[idx + problem.w] == FLAG and problem.field[idx + 2 * problem.w] == FLAG) {
                 return false;
             }
         }
 
-        // Diagonal down-right
+        // F..
+        // .F.
+        // ..F
         if (x + 2 < problem.w and y + 2 < problem.h) {
             if (problem.field[idx + problem.w + 1] == FLAG and problem.field[idx + 2 * problem.w + 2] == FLAG) {
                 return false;
             }
         }
 
-        // Diagonal down-left
+        // ..F
+        // .F.
+        // F..
         if (x >= 2 and y + 2 < problem.h) {
             if (problem.field[idx + problem.w - 1] == FLAG and problem.field[idx + 2 * problem.w - 2] == FLAG) {
                 return false;
@@ -145,63 +163,68 @@ fn antiTripletCheck(problem: *const Problem) bool {
     return true;
 }
 
-// fn autoFinish(problem: *Problem) bool {
-//     const ctx = problem.ctx;
+fn bestCandidate(problem: *const Problem) ?usize {
+    var min_rating: i64 = 127;
+    var min_index: ?usize = null;
 
-//     // Can open the rest
-//     if (problem.flagged() == ctx.total_flags) {
-//         for (0..ctx.size) |i| {
-//             if (problem.field[i] == UNKNOWN) {
-//                 problem.withVal(i, OPEN);
-//             }
-//         }
-//         return true;
-//     }
-
-//     // Can flag the rest
-//     if (ctx.total_flags - problem.flagged() == problem.unknown_count) {
-//         for (0..ctx.size) |i| {
-//             if (problem.field[i] == UNKNOWN) {
-//                 problem.withVal(i, FLAG);
-//             }
-//         }
-//         return true;
-//     }
-
-//     return false;
-// }
-
-fn bestCandidate(problem: *const Problem) ?u8 {
-    var min_rating: i8 = 127;
-    var min_index: ?u8 = null;
-
-    for (problem.known_indices) |i| {
-        const value = problem.field[i];
-        const flags = countNeighbors(problem, i, FLAG);
-        const rating = value - flags;
-
-        if (rating < min_rating) {
-            // Find first unknown neighbor
-            const x = i % problem.w;
-            const y = i / problem.w;
-            const x_start: usize = if (x > 0) x - 1 else 0;
-            const x_end: usize = if (x + 1 < problem.w) x + 2 else problem.w;
-            const y_start: usize = if (y > 0) y - 1 else 0;
-            const y_end: usize = if (y + 1 < problem.h) y + 2 else problem.h;
-
-            outer: for (y_start..y_end) |ny| {
-                for (x_start..x_end) |nx| {
-                    const nbi = ny * problem.w + nx;
-                    if (problem.field[nbi] == UNKNOWN) {
-                        min_rating = rating;
-                        min_index = @intCast(nbi);
-                        break :outer;
-                    }
+    // [Q] Pick unknown in the most constrained 2x2 quad (fewest unknowns, no flags)
+    if (problem.rules.quad) {
+        const w = problem.w;
+        const field = problem.field;
+        outer: for (0..problem.h - 1) |y| {
+            for (0..w - 1) |x| {
+                const qi = y * w + x;
+                const tl = field[qi];
+                const tr = field[qi + 1];
+                const bl = field[qi + w];
+                const br = field[qi + w + 1];
+                if (tl == FLAG or tr == FLAG or bl == FLAG or br == FLAG) continue;
+                var unknowns: i64 = 0;
+                var unknown_idx: usize = 0;
+                if (tl == UNKNOWN) { unknowns += 1; unknown_idx = qi; }
+                if (tr == UNKNOWN) { unknowns += 1; unknown_idx = qi + 1; }
+                if (bl == UNKNOWN) { unknowns += 1; unknown_idx = qi + w; }
+                if (br == UNKNOWN) { unknowns += 1; unknown_idx = qi + w + 1; }
+                if (unknowns > 0 and unknowns < min_rating) {
+                    min_rating = unknowns;
+                    min_index = unknown_idx;
+                    if (min_rating == 1) break :outer;
                 }
             }
         }
     }
+    
+    // [V] pick a cell that has least to open
+    if (problem.rules.vanilla and min_rating > 1) {
+        outer: for (problem.known_indices) |i| {
+            const value = @as(i64, problem.field[i]);
+            const flags = countNeighbors(problem, i, FLAG);
+            const unknowns = countNeighbors(problem, i, UNKNOWN);
+            const rating = unknowns - value + flags;
+            if (unknowns > 0 and rating < min_rating) {
+                const x = i % problem.w;
+                const y = i / problem.w;
+                const x_start: usize = if (x > 0) x - 1 else 0;
+                const x_end: usize = if (x + 1 < problem.w) x + 2 else problem.w;
+                const y_start: usize = if (y > 0) y - 1 else 0;
+                const y_end: usize = if (y + 1 < problem.h) y + 2 else problem.h;
 
+                neighbours: for (y_start..y_end) |ny| {
+                    for (x_start..x_end) |nx| {
+                        const nbi = ny * problem.w + nx;
+                        if (problem.field[nbi] == UNKNOWN) {
+                            min_rating = rating;
+                            min_index = @intCast(nbi);
+                            break :neighbours;
+                        }
+                    }
+                }
+                
+                if (min_rating <= 1) break :outer;
+            }
+        }
+    }
+    
     if (min_index) |idx| {
         return idx;
     }
@@ -221,7 +244,7 @@ fn autoOpen(problem: *Problem) bool {
     const open_indices_len_before = problem.open_indices.items.len;
 
     for (problem.known_indices) |i| {
-        const value = problem.field[i];
+        const value = @as(i64, problem.field[i]);
         const fs = countNeighbors(problem, i, FLAG);
         const unk = countNeighbors(problem, i, UNKNOWN);
         if (unk > 0 and (value == fs or value - fs == unk)) {
@@ -266,12 +289,12 @@ fn autoFinish(problem: *Problem) bool {
     const flagged = flag_indices_len_before;
 
     if (problem.unknown_count > 0) {
-        if (problem.unknown_count == problem.total_flags - flagged) {
+        if (problem.unknown_count + flagged <= problem.total_flags) {
             // Can flag the rest
             for (0..problem.w * problem.h) |i| {
                 if (problem.field[i] == UNKNOWN) problem.setFlag(i);
             }
-        } else if (flagged == problem.total_flags) {
+        } else if (flagged >= problem.total_flags) {
             // Can open the rest
             for (0..problem.w * problem.h) |i| {
                 if (problem.field[i] == UNKNOWN) problem.setOpen(i);
@@ -297,9 +320,9 @@ fn autoFinish(problem: *Problem) bool {
 
 fn checkConstraints(problem: *Problem) bool {
     if (problem.rules.total and !totalCheck(problem)) return false;
-    if (problem.rules.vanilla and !vanillaCheck(problem)) return false;
     if (problem.rules.anti_triplet and !antiTripletCheck(problem)) return false;
-
+    if (problem.rules.quad and !quadCheck(problem)) return false;
+    if (problem.rules.vanilla and !vanillaCheck(problem)) return false;
     if (problem.unknown_count == 0) return true;
     return diveDeeper(problem);
 }
@@ -307,12 +330,19 @@ fn checkConstraints(problem: *Problem) bool {
 fn diveDeeper(problem: *Problem) bool {
     const candidate = bestCandidate(problem) orelse return false;
 
+    const last_checked_flag_idx = problem.flag_indices.items.len;
+    const last_checked_open_idx = problem.open_indices.items.len;
+
     // Try FLAG first
+    problem.last_checked_flag_idx = last_checked_flag_idx;
+    problem.last_checked_open_idx = last_checked_open_idx;
     problem.setFlag(candidate);
     if (autoOpen(problem)) return true;
     problem.setUnknown(candidate);
 
     // Try OPEN
+    problem.last_checked_flag_idx = last_checked_flag_idx;
+    problem.last_checked_open_idx = last_checked_open_idx;
     problem.setOpen(candidate);
     if (autoOpen(problem)) return true;
     problem.setUnknown(candidate);
@@ -320,22 +350,31 @@ fn diveDeeper(problem: *Problem) bool {
     return false;
 }
 
-fn parseCell(ch: u8) i8 {
+fn parseCell(ch: u8) u8 {
     return switch (ch) {
         'F' => FLAG,
-        '?' => OPEN,
-        '.' => UNKNOWN,
+        '-' => OPEN,
+        '?' => UNKNOWN,
         '0'...'8' => @intCast(ch - '0'),
-        else => UNKNOWN,
+        else => unreachable
     };
 }
 
-fn cellToChar(val: i8) u8 {
-    if (val >= 0 and val <= 8) return '0' + @as(u8, @intCast(val));
+fn cellToChar(val: u8) []const u8 {
     return switch (val) {
-        FLAG => 'F',
-        OPEN => '?',
-        else => '.',
+        0 => "0",
+        1 => "1",
+        2 => "2",
+        3 => "3",
+        4 => "4",
+        5 => "5",
+        6 => "6",
+        7 => "7",
+        8 => "8",
+        FLAG => "F",
+        OPEN => "-",
+        UNKNOWN => "?",
+        else => unreachable
     };
 }
 
@@ -385,6 +424,8 @@ pub fn solve(input: []const u8, out: []u8) ?[]const u8 {
         const rule = input[rule_start..pos];
         if (std.mem.eql(u8, rule, "T")) {
             rules.anti_triplet = true;
+        } else if (std.mem.eql(u8, rule, "Q")) {
+            rules.quad = true;
         }
         if (pos < input.len) pos += 1; // skip ']'
     }
@@ -416,7 +457,7 @@ pub fn solve(input: []const u8, out: []u8) ?[]const u8 {
 
     // Allocate field
     const size = w * h;
-    const field = allocator.alloc(i8, size) catch return null;
+    const field = allocator.alloc(u8, size) catch return null;
     var unknown_count: usize = 0;
     var flag_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null;
     var open_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null;
@@ -446,6 +487,7 @@ pub fn solve(input: []const u8, out: []u8) ?[]const u8 {
 
         if (val <= 8) {
             known_indices.appendAssumeCapacity(@intCast(idx));
+            open_indices.appendAssumeCapacity(@intCast(idx));
         }
 
         idx += 1;
@@ -464,7 +506,9 @@ pub fn solve(input: []const u8, out: []u8) ?[]const u8 {
         .constrained_indices = constrained_indices.items,
         .unknown_count = unknown_count,
         .flag_indices = flag_indices,
+        .last_checked_flag_idx = 0,
         .open_indices = open_indices,
+        .last_checked_open_idx = 0,
     };
 
     if (!autoOpen(&problem)) return null;
@@ -477,8 +521,9 @@ pub fn solve(input: []const u8, out: []u8) ?[]const u8 {
             ri += 1;
         }
         for (0..w) |x| {
-            out[ri] = cellToChar(field[y * w + x]);
-            ri += 1;
+            const emoji = cellToChar(field[y * w + x]);
+            @memcpy(out[ri..][0..emoji.len], emoji);
+            ri += emoji.len;
         }
     }
     return out[0..ri];
@@ -489,65 +534,84 @@ pub fn main() !void {
     var w = std.fs.File.stdout().writer(&.{});
     const stdout = &w.interface;
 
-    const test_cases = [_]struct {
-        name: []const u8,
-        input: []const u8,
-    }{
-        .{
-            .name = "[V]8x8-26-1388D",
-            .input =
-            \\[V]8x8-26-1388D
-            \\........
-            \\.....6..
-            \\2.....4.
-            \\2.2....1
-            \\........
-            \\........
-            \\2?.42...
-            \\0111?.3.
-            ,
-        },
-        .{
-            .name = "[T]8x8-26-10817",
-            .input =
-            \\[T]8x8-26-10817
-            \\..3.....
-            \\.......3
-            \\........
-            \\.4..3...
-            \\.....5..
-            \\........
-            \\..3.....
-            \\..2.....
-            ,
-        },
+    const test_cases = [_][]const u8{
+        \\[V]8x8-26-1388D
+        \\????????
+        \\?????6??
+        \\2?????4?
+        \\2?2????1
+        \\????????
+        \\????????
+        \\2-?42???
+        \\0111-?3?
+        ,
+        \\[V]8x8-26-7467
+        \\?3??????
+        \\?3FF4???
+        \\1-35F??2
+        \\?11FF???
+        \\2234?44?
+        \\?F4F?24?
+        \\??5?-??F
+        \\?????F3-
+        ,
+        \\[Q]8x8-26-10355
+        \\?1?2?2??
+        \\????????
+        \\????4?5?
+        \\??????4?
+        \\?????5??
+        \\????????
+        \\2????3??
+        \\???????2
+        ,
+        \\[Q]8x8-26-12056
+        \\-FF?F31-
+        \\F6F?F-F-
+        \\F4F?????
+        \\243?????
+        \\??F?443?
+        \\???3????
+        \\????????
+        \\??????--
+        ,
+        \\[T]8x8-26-10817
+        \\??3?????
+        \\???????3
+        \\????????
+        \\?4??3???
+        \\?????5??
+        \\????????
+        \\??3?????
+        \\??2?????
+        ,
+        \\[T]8x8-26-11654
+        \\2-F?????
+        \\FF4F????
+        \\4?3?4???
+        \\F?23????
+        \\-5F4????
+        \\1FF-????
+        \\3-4?????
+        \\FF2?????
+        ,
     };
 
-    for (test_cases) |tc| {
-        try stdout.print("Benching {s}...\n", .{tc.name});
-
+    for (test_cases) |input| {
+        const name = if (std.mem.indexOfScalar(u8, input, '\n')) |nl| input[0..nl] else input;
+        try stdout.print("{s}", .{name});
         var buf: [256]u8 = undefined;
-
-        // Warmup
         const warmup_iters: usize = 1000;
-        var timer = try std.time.Timer.start();
         for (0..warmup_iters) |_| {
-            _ = solve(tc.input, &buf);
+            _ = solve(input, &buf);
         }
-        const warmup_ns = timer.read();
-        try stdout.print("  Warmup: {d:.3} ms/solve, {d} iters\n", .{
-            @as(f64, @floatFromInt(warmup_ns)) / @as(f64, @floatFromInt(warmup_iters)) / 1_000_000.0,
-            warmup_iters,
-        });
-
-        // Benchmark
+        var timer = try std.time.Timer.start();
         const bench_iters: usize = 10000;
-        timer.reset();
         for (0..bench_iters) |_| {
-            _ = solve(tc.input, &buf);
+            _ = solve(input, &buf);
         }
         const bench_ns = timer.read();
-        try stdout.print("  Bench:  {d:.3} ms/solve, {d} iters\n", .{
+        try stdout.print("\t{d:.3} ms/solve\t{d} iters\n", .{
             @as(f64, @floatFromInt(bench_ns)) / @as(f64, @floatFromInt(bench_iters)) / 1_000_000.0,
             bench_iters,
         });
