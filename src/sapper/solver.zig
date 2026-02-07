@@ -9,6 +9,7 @@ const Rules = packed struct {
     vanilla: bool = false,
     anti_triplet: bool = false,
     quad: bool = false,
+    connected: bool = false,
 };
 
 const Problem = struct {
@@ -24,6 +25,7 @@ const Problem = struct {
     last_checked_flag_idx: usize,
     open_indices: std.ArrayList(u8),
     last_checked_open_idx: usize,
+    neighbor_masks: [64]u64,
 
     fn oneof(self: *Problem, x: usize, y: usize, mask: u8) bool {
         return self.field[(y * self.w) + x] & mask != 0;
@@ -117,6 +119,42 @@ fn quadCheck(problem: *Problem) bool {
     return true;
 }
 
+// [C] All mines are orthogonally or diagonally connected
+fn connectedCheck(problem: *const Problem) bool {
+    // Flagging a cell doesn't change connected proprerty
+    if (problem.last_checked_open_idx == problem.open_indices.items.len) return true;
+    
+    const field = problem.field;
+    const size = problem.w * problem.h;
+    const cell_mask: u8 = FLAG | UNKNOWN;
+
+    // Build bitmask of all FLAG|UNKNOWN cells
+    var target: u64 = 0;
+    for (0..size) |i| {
+        if (field[i] & cell_mask != 0) {
+            target |= @as(u64, 1) << @intCast(i);
+        }
+    }
+    if (target == 0) return true;
+
+    // Flood fill from lowest set bit
+    var visited: u64 = target & (~target +% 1); // isolate lowest bit
+    while (true) {
+        // Expand all visited cells' neighbors at once
+        var expanded: u64 = 0;
+        var remaining = visited;
+        while (remaining != 0) {
+            const bit: u6 = @intCast(@ctz(remaining));
+            expanded |= problem.neighbor_masks[bit];
+            remaining &= remaining - 1; // clear lowest bit
+        }
+        expanded &= target & ~visited;
+        if (expanded == 0) break;
+        visited |= expanded;
+    }
+    return visited == target;
+}
+
 // [T] Flags may not form row of three orthogonally or diagonally
 fn antiTripletCheck(problem: *const Problem) bool {
     const flag_indices = problem.flag_indices.items;
@@ -161,82 +199,6 @@ fn antiTripletCheck(problem: *const Problem) bool {
         }
     }
     return true;
-}
-
-fn bestCandidate(problem: *const Problem) ?usize {
-    var min_rating: i64 = 127;
-    var min_index: ?usize = null;
-
-    // [Q] Pick unknown in the most constrained 2x2 quad (fewest unknowns, no flags)
-    if (problem.rules.quad) {
-        const w = problem.w;
-        const field = problem.field;
-        outer: for (0..problem.h - 1) |y| {
-            for (0..w - 1) |x| {
-                const qi = y * w + x;
-                const tl = field[qi];
-                const tr = field[qi + 1];
-                const bl = field[qi + w];
-                const br = field[qi + w + 1];
-                if (tl == FLAG or tr == FLAG or bl == FLAG or br == FLAG) continue;
-                var unknowns: i64 = 0;
-                var unknown_idx: usize = 0;
-                if (tl == UNKNOWN) { unknowns += 1; unknown_idx = qi; }
-                if (tr == UNKNOWN) { unknowns += 1; unknown_idx = qi + 1; }
-                if (bl == UNKNOWN) { unknowns += 1; unknown_idx = qi + w; }
-                if (br == UNKNOWN) { unknowns += 1; unknown_idx = qi + w + 1; }
-                if (unknowns > 0 and unknowns < min_rating) {
-                    min_rating = unknowns;
-                    min_index = unknown_idx;
-                    if (min_rating == 1) break :outer;
-                }
-            }
-        }
-    }
-    
-    // [V] pick a cell that has least to open
-    if (problem.rules.vanilla and min_rating > 1) {
-        outer: for (problem.known_indices) |i| {
-            const value = @as(i64, problem.field[i]);
-            const flags = countNeighbors(problem, i, FLAG);
-            const unknowns = countNeighbors(problem, i, UNKNOWN);
-            const rating = unknowns - value + flags;
-            if (unknowns > 0 and rating < min_rating) {
-                const x = i % problem.w;
-                const y = i / problem.w;
-                const x_start: usize = if (x > 0) x - 1 else 0;
-                const x_end: usize = if (x + 1 < problem.w) x + 2 else problem.w;
-                const y_start: usize = if (y > 0) y - 1 else 0;
-                const y_end: usize = if (y + 1 < problem.h) y + 2 else problem.h;
-
-                neighbours: for (y_start..y_end) |ny| {
-                    for (x_start..x_end) |nx| {
-                        const nbi = ny * problem.w + nx;
-                        if (problem.field[nbi] == UNKNOWN) {
-                            min_rating = rating;
-                            min_index = @intCast(nbi);
-                            break :neighbours;
-                        }
-                    }
-                }
-                
-                if (min_rating <= 1) break :outer;
-            }
-        }
-    }
-    
-    if (min_index) |idx| {
-        return idx;
-    }
-
-    // Fallback: first unknown in constrained_indices
-    for (problem.constrained_indices) |c| {
-        if (problem.field[c] == UNKNOWN) {
-            return c;
-        }
-    }
-
-    return null;
 }
 
 fn autoOpen(problem: *Problem) bool {
@@ -322,9 +284,101 @@ fn checkConstraints(problem: *Problem) bool {
     if (problem.rules.total and !totalCheck(problem)) return false;
     if (problem.rules.anti_triplet and !antiTripletCheck(problem)) return false;
     if (problem.rules.quad and !quadCheck(problem)) return false;
+    if (problem.rules.connected and !connectedCheck(problem)) return false;
     if (problem.rules.vanilla and !vanillaCheck(problem)) return false;
     if (problem.unknown_count == 0) return true;
     return diveDeeper(problem);
+}
+
+fn bestCandidate(problem: *const Problem) ?usize {
+    var min_rating: f64 = 1000;
+    var min_index: ?usize = null;
+    
+    // [C] Pick unknown with fewest FLAG|UNKNOWN neighbors (most constrained for connectivity)
+    if (problem.rules.connected) {
+        for (problem.constrained_indices) |i| {
+            if (problem.field[i] != UNKNOWN) continue;
+            const flags = countNeighbors(problem, i, FLAG);
+            const unknowns = countNeighbors(problem, i, UNKNOWN);
+            const rating = @as(f64, @floatFromInt(flags)) + @as(f64, @floatFromInt(unknowns));
+            if (rating > 0 and rating < min_rating) {
+                min_rating = rating;
+                min_index = i;
+                // if (min_rating == 1) break;
+            }
+        }
+    }
+
+    // [Q] Pick unknown in the most constrained 2x2 quad (fewest unknowns, no flags)
+    if (problem.rules.quad) {
+        const w = problem.w;
+        const field = problem.field;
+        for (0..problem.h - 1) |y| {
+            for (0..w - 1) |x| {
+                const qi = y * w + x;
+                const tl = field[qi];
+                const tr = field[qi + 1];
+                const bl = field[qi + w];
+                const br = field[qi + w + 1];
+                if (tl == FLAG or tr == FLAG or bl == FLAG or br == FLAG) continue;
+                var unknowns: f64 = 0;
+                var unknown_idx: usize = 0;
+                if (tl == UNKNOWN) { unknowns += 1; unknown_idx = qi; }
+                if (tr == UNKNOWN) { unknowns += 1; unknown_idx = qi + 1; }
+                if (bl == UNKNOWN) { unknowns += 1; unknown_idx = qi + w; }
+                if (br == UNKNOWN) { unknowns += 1; unknown_idx = qi + w + 1; }
+                if (unknowns > 0 and unknowns < min_rating) {
+                    min_rating = unknowns;
+                    min_index = unknown_idx;
+                    // if (min_rating == 1) break :outer;
+                }
+            }
+        }
+    }
+    
+    // [V] pick a cell that has least to open
+    if (problem.rules.vanilla and min_rating > 1) {
+        for (problem.known_indices) |i| {
+            const value = @as(i64, problem.field[i]);
+            const flags = countNeighbors(problem, i, FLAG);
+            const unknowns = countNeighbors(problem, i, UNKNOWN);
+            const rating = @as(f64, @floatFromInt(unknowns - value + flags));
+            if (unknowns > 0 and rating < min_rating) {
+                const x = i % problem.w;
+                const y = i / problem.w;
+                const x_start: usize = if (x > 0) x - 1 else 0;
+                const x_end: usize = if (x + 1 < problem.w) x + 2 else problem.w;
+                const y_start: usize = if (y > 0) y - 1 else 0;
+                const y_end: usize = if (y + 1 < problem.h) y + 2 else problem.h;
+
+                neighbours: for (y_start..y_end) |ny| {
+                    for (x_start..x_end) |nx| {
+                        const nbi = ny * problem.w + nx;
+                        if (problem.field[nbi] == UNKNOWN) {
+                            min_rating = rating;
+                            min_index = @intCast(nbi);
+                            break :neighbours;
+                        }
+                    }
+                }
+                
+                // if (min_rating <= 1) break :outer;
+            }
+        }
+    }
+    
+    if (min_index) |idx| {
+        return idx;
+    }
+
+    // Fallback: first unknown in constrained_indices
+    for (problem.constrained_indices) |c| {
+        if (problem.field[c] == UNKNOWN) {
+            return c;
+        }
+    }
+
+    return null;
 }
 
 fn diveDeeper(problem: *Problem) bool {
@@ -426,6 +480,8 @@ pub fn solve(input: []const u8, out: []u8) ?[]const u8 {
             rules.anti_triplet = true;
         } else if (std.mem.eql(u8, rule, "Q")) {
             rules.quad = true;
+        } else if (std.mem.eql(u8, rule, "C")) {
+            rules.connected = true;
         }
         if (pos < input.len) pos += 1; // skip ']'
     }
@@ -496,6 +552,29 @@ pub fn solve(input: []const u8, out: []u8) ?[]const u8 {
 
     if (idx != size) return null; // Not enough cells
 
+    // Precompute neighbor bitmasks for connected check
+    var neighbor_masks: [64]u64 = undefined;
+    if (rules.connected) {
+        for (0..size) |i| {
+            const x = i % w;
+            const y = i / w;
+            var m: u64 = 0;
+            const x_start: usize = if (x > 0) x - 1 else 0;
+            const x_end: usize = if (x + 1 < w) x + 2 else w;
+            const y_start: usize = if (y > 0) y - 1 else 0;
+            const y_end: usize = if (y + 1 < h) y + 2 else h;
+            for (y_start..y_end) |ny| {
+                for (x_start..x_end) |nx| {
+                    const ni = ny * w + nx;
+                    if (ni != i) {
+                        m |= @as(u64, 1) << @intCast(ni);
+                    }
+                }
+            }
+            neighbor_masks[i] = m;
+        }
+    }
+
     var problem = Problem{
         .field = field,
         .w = w,
@@ -509,6 +588,7 @@ pub fn solve(input: []const u8, out: []u8) ?[]const u8 {
         .last_checked_flag_idx = 0,
         .open_indices = open_indices,
         .last_checked_open_idx = 0,
+        .neighbor_masks = neighbor_masks,
     };
 
     if (!autoOpen(&problem)) return null;
@@ -529,92 +609,170 @@ pub fn solve(input: []const u8, out: []u8) ?[]const u8 {
     return out[0..ri];
 }
 
-// Benchmark
-pub fn main() !void {
-    var w = std.fs.File.stdout().writer(&.{});
-    const stdout = &w.interface;
+const builtin_puzzles = [_][]const u8{
+    \\[V]8x8-26-1388D
+    \\????????
+    \\?????6??
+    \\2?????4?
+    \\2?2????1
+    \\????????
+    \\????????
+    \\2-?42???
+    \\0111-?3?
+    ,
+    \\[V]8x8-26-7467
+    \\?3??????
+    \\?3FF4???
+    \\1-35F??2
+    \\?11FF???
+    \\2234?44?
+    \\?F4F?24?
+    \\??5?-??F
+    \\?????F3-
+    ,
+    \\[Q]8x8-26-10355
+    \\?1?2?2??
+    \\????????
+    \\????4?5?
+    \\??????4?
+    \\?????5??
+    \\????????
+    \\2????3??
+    \\???????2
+    ,
+    \\[Q]8x8-26-12056
+    \\-FF?F31-
+    \\F6F?F-F-
+    \\F4F?????
+    \\243?????
+    \\??F?443?
+    \\???3????
+    \\????????
+    \\??????--
+    ,
+    \\[C]8x8-26-10757
+    \\??1?????
+    \\???????-
+    \\???1????
+    \\?????4?4
+    \\????????
+    \\?????-??
+    \\???1????
+    \\????????
+    ,
+    \\[C]8x8-26-12801
+    \\????????
+    \\?3?2????
+    \\?3??????
+    \\??????3?
+    \\????????
+    \\???4??3?
+    \\????????
+    \\?????2??
+    ,
+    \\[T]8x8-26-10817
+    \\??3?????
+    \\???????3
+    \\????????
+    \\?4??3???
+    \\?????5??
+    \\????????
+    \\??3?????
+    \\??2?????
+    ,
+    \\[T]8x8-26-11654
+    \\2-F?????
+    \\FF4F????
+    \\4?3?4???
+    \\F?23????
+    \\-5F4????
+    \\1FF-????
+    \\3-4?????
+    \\FF2?????
+    ,
+};
 
-    const test_cases = [_][]const u8{
-        \\[V]8x8-26-1388D
-        \\????????
-        \\?????6??
-        \\2?????4?
-        \\2?2????1
-        \\????????
-        \\????????
-        \\2-?42???
-        \\0111-?3?
-        ,
-        \\[V]8x8-26-7467
-        \\?3??????
-        \\?3FF4???
-        \\1-35F??2
-        \\?11FF???
-        \\2234?44?
-        \\?F4F?24?
-        \\??5?-??F
-        \\?????F3-
-        ,
-        \\[Q]8x8-26-10355
-        \\?1?2?2??
-        \\????????
-        \\????4?5?
-        \\??????4?
-        \\?????5??
-        \\????????
-        \\2????3??
-        \\???????2
-        ,
-        \\[Q]8x8-26-12056
-        \\-FF?F31-
-        \\F6F?F-F-
-        \\F4F?????
-        \\243?????
-        \\??F?443?
-        \\???3????
-        \\????????
-        \\??????--
-        ,
-        \\[T]8x8-26-10817
-        \\??3?????
-        \\???????3
-        \\????????
-        \\?4??3???
-        \\?????5??
-        \\????????
-        \\??3?????
-        \\??2?????
-        ,
-        \\[T]8x8-26-11654
-        \\2-F?????
-        \\FF4F????
-        \\4?3?4???
-        \\F?23????
-        \\-5F4????
-        \\1FF-????
-        \\3-4?????
-        \\FF2?????
-        ,
-    };
-
-    for (test_cases) |input| {
-        const name = if (std.mem.indexOfScalar(u8, input, '\n')) |nl| input[0..nl] else input;
+fn bench(puzzles: []const []const u8, iters: usize, stdout: anytype) !void {
+    for (puzzles) |input| {
+        const name = if (std.mem.indexOfAny(u8, input, " \n")) |ws| input[0..ws] else input;
         try stdout.print("{s}", .{name});
         var buf: [256]u8 = undefined;
-        const warmup_iters: usize = 1000;
-        for (0..warmup_iters) |_| {
+        // Warmup
+        for (0..iters) |_| {
             _ = solve(input, &buf);
         }
         var timer = try std.time.Timer.start();
-        const bench_iters: usize = 10000;
-        for (0..bench_iters) |_| {
+        for (0..iters) |_| {
             _ = solve(input, &buf);
         }
         const bench_ns = timer.read();
         try stdout.print("\t{d:.3} ms/solve\t{d} iters\n", .{
-            @as(f64, @floatFromInt(bench_ns)) / @as(f64, @floatFromInt(bench_iters)) / 1_000_000.0,
-            bench_iters,
+            @as(f64, @floatFromInt(bench_ns)) / @as(f64, @floatFromInt(iters)) / 1_000_000.0,
+            iters,
         });
+    }
+}
+
+fn visualize(_input: []const u8) void {
+    _ = _input;
+}
+
+pub fn main() !void {
+    var w = std.fs.File.stdout().writer(&.{});
+    const stdout = &w.interface;
+
+    const args = try std.process.argsAlloc(std.heap.page_allocator);
+    defer std.process.argsFree(std.heap.page_allocator, args);
+
+    if (args.len < 2) {
+        try stdout.print("Usage: solver bench [--puzzle \"...\"] [--iters N]\n       solver visualize --puzzle \"...\"\n", .{});
+        return;
+    }
+
+    const command = args[1];
+    var iters: usize = 1000;
+    var puzzle: ?[]const u8 = null;
+
+    var i: usize = 2;
+    while (i < args.len) : (i += 1) {
+        if (std.mem.eql(u8, args[i], "--iters")) {
+            i += 1;
+            if (i >= args.len) {
+                try stdout.print("--iters requires a number\n", .{});
+                return;
+            }
+            iters = std.fmt.parseInt(usize, args[i], 10) catch {
+                try stdout.print("--iters: invalid number '{s}'\n", .{args[i]});
+                return;
+            };
+        } else if (std.mem.eql(u8, args[i], "--puzzle")) {
+            i += 1;
+            if (i >= args.len) {
+                try stdout.print("--puzzle requires a puzzle string\n", .{});
+                return;
+            }
+            puzzle = args[i];
+        } else {
+            try stdout.print("Unknown argument: {s}\n", .{args[i]});
+            return;
+        }
+    }
+
+    if (std.mem.eql(u8, command, "bench")) {
+        if (puzzle) |p| {
+            const one = [1][]const u8{p};
+            try bench(&one, iters, stdout);
+        } else {
+            try bench(&builtin_puzzles, iters, stdout);
+        }
+    } else if (std.mem.eql(u8, command, "visualize")) {
+        if (puzzle) |p| {
+            visualize(p);
+        } else {
+            try stdout.print("visualize requires --puzzle\n", .{});
+        }
+    } else {
+        try stdout.print("Unknown command: {s}\n", .{command});
     }
 }
 
