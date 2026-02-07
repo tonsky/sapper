@@ -1,8 +1,9 @@
 const std = @import("std");
 
-const FLAG: u8    = 0b00010000;
-const OPEN: u8    = 0b00100000;
-const UNKNOWN: u8 = 0b01000000;
+const FLAG: u8       = 0b00010000;
+const OPEN: u8       = 0b00100000;
+const UNKNOWN: u8    = 0b01000000;
+const KNOWN_MASK: u8 = 0b00001111;
 
 const Rules = packed struct {
     total: bool = false,
@@ -26,6 +27,7 @@ const Problem = struct {
     open_indices: std.ArrayList(u8),
     last_checked_open_idx: usize,
     neighbor_masks: [64]u64,
+    visualize: bool,
 
     fn oneof(self: *Problem, x: usize, y: usize, mask: u8) bool {
         return self.field[(y * self.w) + x] & mask != 0;
@@ -54,7 +56,7 @@ const Problem = struct {
     }
 };
 
-fn countNeighbors(problem: *const Problem, idx: usize, val: i8) i8 {
+fn countNeighbors(problem: *const Problem, idx: usize, mask: u8) i8 {
     const x = idx % problem.w;
     const y = idx / problem.w;
     var res: i8 = 0;
@@ -67,7 +69,7 @@ fn countNeighbors(problem: *const Problem, idx: usize, val: i8) i8 {
     for (y_start..y_end) |ny| {
         for (x_start..x_end) |nx| {
             if (nx == x and ny == y) continue;
-            if (problem.field[ny * problem.w + nx] == val) res += 1;
+            if (problem.field[ny * problem.w + nx] & mask != 0) res += 1;
         }
     }
     return res;
@@ -201,6 +203,46 @@ fn antiTripletCheck(problem: *const Problem) bool {
     return true;
 }
 
+fn eraseField(problem: *const Problem) void {
+    var buf: [16]u8 = undefined;
+    const esc = std.fmt.bufPrint(&buf, "\x1b[{d}A", .{problem.h}) catch unreachable;
+    var bw = std.fs.File.stdout().writer(&.{});
+    bw.interface.writeAll(esc) catch {};
+}
+
+fn fieldToStr(problem: *const Problem, out: []u8) []const u8 {
+    var len: usize = 0;
+    for (0..problem.h) |y| {
+        if (y > 0) {
+            out[len] = '\n';
+            len += 1;
+        }
+        for (0..problem.w) |x| {
+            const ch = cellToChar(problem.field[y * problem.w + x]);
+            @memcpy(out[len..][0..ch.len], ch);
+            len += ch.len;
+        }
+    }
+    return out[0..len];
+}
+
+fn printField(problem: *const Problem) void {
+    var buf: [512]u8 = undefined;
+    const str = fieldToStr(problem, &buf);
+    var bw = std.fs.File.stdout().writer(&.{});
+    bw.interface.writeAll(str) catch {};
+    bw.interface.writeAll("\n") catch {};
+}
+
+fn beginSolving(problem: *Problem) bool {
+    if (problem.visualize) {
+        eraseField(problem);
+        printField(problem);
+        std.Thread.sleep(50_000_000); // 50ms per frame
+    }
+    return autoOpen(problem);
+}
+
 fn autoOpen(problem: *Problem) bool {
     const flag_indices_len_before = problem.flag_indices.items.len;
     const open_indices_len_before = problem.open_indices.items.len;
@@ -294,75 +336,86 @@ fn bestCandidate(problem: *const Problem) ?usize {
     var min_rating: f64 = 1000;
     var min_index: ?usize = null;
     
-    // [C] Pick unknown with fewest FLAG|UNKNOWN neighbors (most constrained for connectivity)
-    if (problem.rules.connected) {
-        for (problem.constrained_indices) |i| {
-            if (problem.field[i] != UNKNOWN) continue;
-            const flags = countNeighbors(problem, i, FLAG);
-            const unknowns = countNeighbors(problem, i, UNKNOWN);
-            const rating = @as(f64, @floatFromInt(flags)) + @as(f64, @floatFromInt(unknowns));
-            if (rating > 0 and rating < min_rating) {
-                min_rating = rating;
-                min_index = i;
-                // if (min_rating == 1) break;
-            }
-        }
-    }
-
-    // [Q] Pick unknown in the most constrained 2x2 quad (fewest unknowns, no flags)
-    if (problem.rules.quad) {
-        const w = problem.w;
-        const field = problem.field;
-        for (0..problem.h - 1) |y| {
-            for (0..w - 1) |x| {
-                const qi = y * w + x;
-                const tl = field[qi];
-                const tr = field[qi + 1];
-                const bl = field[qi + w];
-                const br = field[qi + w + 1];
-                if (tl == FLAG or tr == FLAG or bl == FLAG or br == FLAG) continue;
-                var unknowns: f64 = 0;
-                var unknown_idx: usize = 0;
-                if (tl == UNKNOWN) { unknowns += 1; unknown_idx = qi; }
-                if (tr == UNKNOWN) { unknowns += 1; unknown_idx = qi + 1; }
-                if (bl == UNKNOWN) { unknowns += 1; unknown_idx = qi + w; }
-                if (br == UNKNOWN) { unknowns += 1; unknown_idx = qi + w + 1; }
-                if (unknowns > 0 and unknowns < min_rating) {
-                    min_rating = unknowns;
-                    min_index = unknown_idx;
-                    // if (min_rating == 1) break :outer;
-                }
-            }
-        }
-    }
-    
-    // [V] pick a cell that has least to open
-    if (problem.rules.vanilla and min_rating > 1) {
-        for (problem.known_indices) |i| {
-            const value = @as(i64, problem.field[i]);
-            const flags = countNeighbors(problem, i, FLAG);
-            const unknowns = countNeighbors(problem, i, UNKNOWN);
-            const rating = @as(f64, @floatFromInt(unknowns - value + flags));
-            if (unknowns > 0 and rating < min_rating) {
-                const x = i % problem.w;
-                const y = i / problem.w;
-                const x_start: usize = if (x > 0) x - 1 else 0;
-                const x_end: usize = if (x + 1 < problem.w) x + 2 else problem.w;
-                const y_start: usize = if (y > 0) y - 1 else 0;
-                const y_end: usize = if (y + 1 < problem.h) y + 2 else problem.h;
-
-                neighbours: for (y_start..y_end) |ny| {
-                    for (x_start..x_end) |nx| {
-                        const nbi = ny * problem.w + nx;
-                        if (problem.field[nbi] == UNKNOWN) {
-                            min_rating = rating;
-                            min_index = @intCast(nbi);
-                            break :neighbours;
-                        }
-                    }
+    rating: {
+        // [C] Find a spot near the flag, preferably also next to a known cell
+        if (problem.rules.connected) {
+            for (problem.constrained_indices) |i| {
+                if (problem.field[i] != UNKNOWN) continue;
+                const flags = countNeighbors(problem, i, FLAG);
+                if (flags == 0) continue;
+                
+                const knowns = countNeighbors(problem, i, KNOWN_MASK);
+                if (knowns > 0) {
+                    min_rating = 1;
+                    min_index = i;
+                    break :rating;
                 }
                 
-                // if (min_rating <= 1) break :outer;
+                const unknowns = countNeighbors(problem, i, UNKNOWN);
+                const rating = @as(f64, @floatFromInt(flags)) + @as(f64, @floatFromInt(unknowns));
+                if (rating > 0 and rating < min_rating) {
+                    min_rating = rating;
+                    min_index = i;
+                }
+            }
+            if (min_index != null) break :rating;
+        }
+
+        // [Q] Pick unknown in the most constrained 2x2 quad (fewest unknowns, no flags)
+        if (problem.rules.quad) {
+            const w = problem.w;
+            const field = problem.field;
+            for (0..problem.h - 1) |y| {
+                for (0..w - 1) |x| {
+                    const qi = y * w + x;
+                    const tl = field[qi];
+                    const tr = field[qi + 1];
+                    const bl = field[qi + w];
+                    const br = field[qi + w + 1];
+                    if (tl == FLAG or tr == FLAG or bl == FLAG or br == FLAG) continue;
+                    var unknowns: f64 = 0;
+                    var unknown_idx: usize = 0;
+                    if (tl == UNKNOWN) { unknowns += 1; unknown_idx = qi; }
+                    if (tr == UNKNOWN) { unknowns += 1; unknown_idx = qi + 1; }
+                    if (bl == UNKNOWN) { unknowns += 1; unknown_idx = qi + w; }
+                    if (br == UNKNOWN) { unknowns += 1; unknown_idx = qi + w + 1; }
+                    if (unknowns > 0 and unknowns < min_rating) {
+                        min_rating = unknowns;
+                        min_index = unknown_idx;
+                        if (min_rating == 1) break :rating;
+                    }
+                }
+            }
+        }
+        
+        // [V] pick a cell that has least to open
+        if (problem.rules.vanilla) {
+            for (problem.known_indices) |i| {
+                const value = @as(i64, problem.field[i]);
+                const flags = countNeighbors(problem, i, FLAG);
+                const unknowns = countNeighbors(problem, i, UNKNOWN);
+                const rating = @as(f64, @floatFromInt(unknowns - value + flags));
+                if (unknowns > 0 and rating < min_rating) {
+                    const x = i % problem.w;
+                    const y = i / problem.w;
+                    const x_start: usize = if (x > 0) x - 1 else 0;
+                    const x_end: usize = if (x + 1 < problem.w) x + 2 else problem.w;
+                    const y_start: usize = if (y > 0) y - 1 else 0;
+                    const y_end: usize = if (y + 1 < problem.h) y + 2 else problem.h;
+
+                    neighbours: for (y_start..y_end) |ny| {
+                        for (x_start..x_end) |nx| {
+                            const nbi = ny * problem.w + nx;
+                            if (problem.field[nbi] == UNKNOWN) {
+                                min_rating = rating;
+                                min_index = @intCast(nbi);
+                                break :neighbours;
+                            }
+                        }
+                    }
+                    
+                    if (min_rating <= 1) break :rating;
+                }
             }
         }
     }
@@ -391,14 +444,14 @@ fn diveDeeper(problem: *Problem) bool {
     problem.last_checked_flag_idx = last_checked_flag_idx;
     problem.last_checked_open_idx = last_checked_open_idx;
     problem.setFlag(candidate);
-    if (autoOpen(problem)) return true;
+    if (beginSolving(problem)) return true;
     problem.setUnknown(candidate);
 
     // Try OPEN
     problem.last_checked_flag_idx = last_checked_flag_idx;
     problem.last_checked_open_idx = last_checked_open_idx;
     problem.setOpen(candidate);
-    if (autoOpen(problem)) return true;
+    if (beginSolving(problem)) return true;
     problem.setUnknown(candidate);
 
     return false;
@@ -407,8 +460,8 @@ fn diveDeeper(problem: *Problem) bool {
 fn parseCell(ch: u8) u8 {
     return switch (ch) {
         'F' => FLAG,
-        '-' => OPEN,
-        '?' => UNKNOWN,
+        '?', '-' => OPEN,
+        '.' => UNKNOWN,
         '0'...'8' => @intCast(ch - '0'),
         else => unreachable
     };
@@ -427,7 +480,7 @@ fn cellToChar(val: u8) []const u8 {
         8 => "8",
         FLAG => "F",
         OPEN => "-",
-        UNKNOWN => "?",
+        UNKNOWN => ".",
         else => unreachable
     };
 }
@@ -455,15 +508,7 @@ fn skipWhitespace(input: []const u8, pos: *usize) void {
     }
 }
 
-/// Parse and solve puzzle
-/// Input format: "[T]8x8-26-1234D\n..1?F.."
-/// Returns solved field as string "..F?.\n..1F." or null if unsolvable
-/// Result is written into caller-provided `out` buffer
-pub fn solve(input: []const u8, out: []u8) ?[]const u8 {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
+fn initProblem(input: []const u8, allocator: std.mem.Allocator) ?Problem {
     var pos: usize = 0;
 
     // Parse rule indicators [T], [V], [T*], etc.
@@ -575,7 +620,7 @@ pub fn solve(input: []const u8, out: []u8) ?[]const u8 {
         }
     }
 
-    var problem = Problem{
+    return Problem{
         .field = field,
         .w = w,
         .h = h,
@@ -589,106 +634,105 @@ pub fn solve(input: []const u8, out: []u8) ?[]const u8 {
         .open_indices = open_indices,
         .last_checked_open_idx = 0,
         .neighbor_masks = neighbor_masks,
+        .visualize = false,
     };
+}
 
-    if (!autoOpen(&problem)) return null;
+/// Parse and solve puzzle
+/// Input format: "[T]8x8-26-1234D\n..1?F.."
+/// Returns solved field as string "..F?.\n..1F." or null if unsolvable
+/// Result is written into caller-provided `out` buffer
+pub fn solve(input: []const u8, out: []u8) ?[]const u8 {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
 
-    // Build result string into caller's buffer
-    var ri: usize = 0;
-    for (0..h) |y| {
-        if (y > 0) {
-            out[ri] = '\n';
-            ri += 1;
-        }
-        for (0..w) |x| {
-            const emoji = cellToChar(field[y * w + x]);
-            @memcpy(out[ri..][0..emoji.len], emoji);
-            ri += emoji.len;
-        }
-    }
-    return out[0..ri];
+    var problem = initProblem(input, arena.allocator()) orelse return null;
+
+    if (!beginSolving(&problem)) return null;
+
+    return fieldToStr(&problem, out);
 }
 
 const builtin_puzzles = [_][]const u8{
     \\[V]8x8-26-1388D
-    \\????????
-    \\?????6??
-    \\2?????4?
-    \\2?2????1
-    \\????????
-    \\????????
-    \\2-?42???
-    \\0111-?3?
+    \\........
+    \\.....6..
+    \\2.....4.
+    \\2.2....1
+    \\........
+    \\........
+    \\2-.42...
+    \\0111-.3.
     ,
     \\[V]8x8-26-7467
-    \\?3??????
-    \\?3FF4???
-    \\1-35F??2
-    \\?11FF???
-    \\2234?44?
-    \\?F4F?24?
-    \\??5?-??F
-    \\?????F3-
+    \\.3......
+    \\.3FF4...
+    \\1-35F..2
+    \\.11FF...
+    \\2234.44.
+    \\.F4F.24.
+    \\..5.-..F
+    \\.....F3-
     ,
     \\[Q]8x8-26-10355
-    \\?1?2?2??
-    \\????????
-    \\????4?5?
-    \\??????4?
-    \\?????5??
-    \\????????
-    \\2????3??
-    \\???????2
+    \\.1.2.2..
+    \\........
+    \\....4.5.
+    \\......4.
+    \\.....5..
+    \\........
+    \\2....3..
+    \\.......2
     ,
     \\[Q]8x8-26-12056
-    \\-FF?F31-
-    \\F6F?F-F-
-    \\F4F?????
-    \\243?????
-    \\??F?443?
-    \\???3????
-    \\????????
-    \\??????--
+    \\-FF.F31-
+    \\F6F.F-F-
+    \\F4F.....
+    \\243.....
+    \\..F.443.
+    \\...3....
+    \\........
+    \\......--
     ,
     \\[C]8x8-26-10757
-    \\??1?????
-    \\???????-
-    \\???1????
-    \\?????4?4
-    \\????????
-    \\?????-??
-    \\???1????
-    \\????????
+    \\..1.....
+    \\.......-
+    \\...1....
+    \\.....4.4
+    \\........
+    \\.....-..
+    \\...1....
+    \\........
     ,
     \\[C]8x8-26-12801
-    \\????????
-    \\?3?2????
-    \\?3??????
-    \\??????3?
-    \\????????
-    \\???4??3?
-    \\????????
-    \\?????2??
+    \\........
+    \\.3.2....
+    \\.3......
+    \\......3.
+    \\........
+    \\...4..3.
+    \\........
+    \\.....2..
     ,
     \\[T]8x8-26-10817
-    \\??3?????
-    \\???????3
-    \\????????
-    \\?4??3???
-    \\?????5??
-    \\????????
-    \\??3?????
-    \\??2?????
+    \\..3.....
+    \\.......3
+    \\........
+    \\.4..3...
+    \\.....5..
+    \\........
+    \\..3.....
+    \\..2.....
     ,
     \\[T]8x8-26-11654
-    \\2-F?????
-    \\FF4F????
-    \\4?3?4???
-    \\F?23????
-    \\-5F4????
-    \\1FF-????
-    \\3-4?????
-    \\FF2?????
+    \\2-F.....
+    \\FF4F....
+    \\4.3.4...
+    \\F.23....
+    \\-5F4....
+    \\1FF-....
+    \\3-4.....
+    \\FF2.....
     ,
 };
 
@@ -713,8 +757,27 @@ fn bench(puzzles: []const []const u8, iters: usize, stdout: anytype) !void {
     }
 }
 
-fn visualize(_input: []const u8) void {
-    _ = _input;
+fn visualize(input: []const u8) void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    var problem = initProblem(input, arena.allocator()) orelse {
+        var bw = std.fs.File.stdout().writer(&.{});
+        bw.interface.writeAll("Failed to parse puzzle\n") catch {};
+        return;
+    };
+    problem.visualize = true;
+    printField(&problem);
+
+    const solved = beginSolving(&problem);
+
+    eraseField(&problem);
+    if (solved) {
+        printField(&problem);
+    } else {
+        var stdout = std.fs.File.stdout().writer(&.{});
+        stdout.interface.writeAll("No solution found\n") catch {};
+    }
 }
 
 pub fn main() !void {
