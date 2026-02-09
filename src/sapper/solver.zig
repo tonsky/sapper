@@ -5,6 +5,9 @@ const OPEN: u8 = 0b00100000;
 const UNKNOWN: u8 = 0b01000000;
 const KNOWN_MASK: u8 = 0b00001111;
 
+var visualize: bool = false;
+var visualize_erase: bool = true;
+
 const Rules = packed struct {
     total: bool = false,
     vanilla: bool = false,
@@ -29,8 +32,6 @@ const Problem = struct {
     neighbor_masks: [64]u64,
     remoteness: [64]i8,
     relative_values: [64]i8,
-    visualize: bool,
-    erase: bool,
 
     fn oneof(self: *Problem, x: usize, y: usize, mask: u8) bool {
         return self.field[(y * self.w) + x] & mask != 0;
@@ -226,6 +227,7 @@ fn antiTripletCheck(problem: *const Problem) bool {
 }
 
 fn eraseField(problem: *const Problem) void {
+    if (!visualize_erase) return;
     var buf: [16]u8 = undefined;
     const esc = std.fmt.bufPrint(&buf, "\x1b[{d}A", .{problem.h + 1}) catch unreachable;
     var bw = std.fs.File.stdout().writer(&.{});
@@ -257,8 +259,8 @@ fn printField(problem: *const Problem) void {
 }
 
 fn beginSolving(problem: *Problem) bool {
-    if (problem.visualize) {
-        if (problem.erase) eraseField(problem);
+    if (visualize) {
+        eraseField(problem);
         printField(problem);
         std.Thread.sleep(50_000_000); // 50ms per frame
     }
@@ -390,84 +392,9 @@ fn checkConstraints(problem: *Problem) bool {
     return diveDeeper(problem);
 }
 
-fn connectedBestCandidate(problem: *const Problem) ?usize {
-    // [C] Find a spot near the flag, preferably also next to a known cell
-    var min_rating: f64 = 1000;
-    var min_index: ?usize = null;
-    const w = problem.w;
-
-    // initial step
-    if (problem.flag_indices.items.len == 0) {
-        for (problem.known_indices) |i| {
-            const r = @as(f64, @floatFromInt(problem.relative_values[i]));
-            if (r >= min_rating) continue;
-
-            const x = i % w;
-            const y = i / w;
-            const x_start: usize = if (x > 0) x - 1 else 0;
-            const x_end: usize = if (x + 1 < problem.w) x + 2 else problem.w;
-            const y_start: usize = if (y > 0) y - 1 else 0;
-            const y_end: usize = if (y + 1 < problem.h) y + 2 else problem.h;
-            neighbours: for (y_start..y_end) |ny| {
-                for (x_start..x_end) |nx| {
-                    const nbi = ny * problem.w + nx;
-                    if (problem.field[nbi] == UNKNOWN) {
-                        min_rating = r;
-                        min_index = @intCast(nbi);
-                        break :neighbours;
-                    }
-                }
-            }
-        }
-
-        if (min_index != null) return min_index;
-
-        for (problem.unknown_indices) |i| {
-            if (problem.field[i] == UNKNOWN) {
-                return i;
-            }
-        }
-
-        return min_index;
-    }
-
-    for (problem.unknown_indices) |i| {
-        if (problem.field[i] != UNKNOWN) continue;
-        var rating: f64 = min_rating;
-        const flags = countNeighbors(problem, i, FLAG);
-
-        // only grow from existing flags
-        if (flags == 0) continue;
-
-        const x = i % w;
-        const y = i / w;
-        rating = 0;
-        for (problem.known_indices) |ki| {
-            const kx = ki % w;
-            const ky = ki / w;
-            const dx: f64 = @as(f64, @floatFromInt(x)) - @as(f64, @floatFromInt(kx));
-            const dy: f64 = @as(f64, @floatFromInt(y)) - @as(f64, @floatFromInt(ky));
-            const dist = @max(@abs(dx), @abs(dy));
-            const value = @as(f64, @floatFromInt(problem.relative_values[ki]));
-            if (value > 0) {
-                const r = dist / value;
-                rating += r;
-            }
-        }
-        rating = rating + @as(f64, @floatFromInt(flags));
-        if (rating < min_rating) {
-            min_rating = rating;
-            min_index = i;
-        }
-    }
-    return min_index;
-}
-
 fn bestCandidate(problem: *const Problem) ?usize {
     var min_rating: f64 = 1000;
     var min_index: ?usize = null;
-
-    // if (problem.rules.connected) return connectedBestCandidate(problem);
 
     rating: {
         // [Q] Pick unknown in the most constrained 2x2 quad (fewest unknowns, no flags)
@@ -488,8 +415,9 @@ fn bestCandidate(problem: *const Problem) ?usize {
                     if (tr == UNKNOWN) { unknowns += 1; unknown_idx = qi + 1; }
                     if (bl == UNKNOWN) { unknowns += 1; unknown_idx = qi + w; }
                     if (br == UNKNOWN) { unknowns += 1; unknown_idx = qi + w + 1; }
-                    if (unknowns > 0 and unknowns < min_rating) {
-                        min_rating = unknowns;
+                    const rating = (unknowns - 1) * 3 + 1;
+                    if (unknowns > 0 and rating < min_rating) {
+                        min_rating = rating;
                         min_index = unknown_idx;
                         if (min_rating == 1) break :rating;
                     }
@@ -783,8 +711,6 @@ fn buildProblem(field: []u8, w: usize, h: usize, total_flags: usize, rules: Rule
         .neighbor_masks = neighbor_masks,
         .remoteness = remoteness,
         .relative_values = relative_values,
-        .visualize = false,
-        .erase = true,
     };
 }
 
@@ -863,8 +789,6 @@ fn parseRawProblem(line: []const u8, out: []u8) ?[]const u8 {
         .neighbor_masks = undefined,
         .remoteness = undefined,
         .relative_values = undefined,
-        .visualize = undefined,
-        .erase = undefined,
     };
     for (0..size) |i| {
         if (field[i] != 0x80) continue;
@@ -905,7 +829,7 @@ pub fn solve(input: []const u8, out: []u8) ?[]const u8 {
 //
 //     solver bench [--iters N] --puzzle "..."
 //
-fn benchOne(input: []const u8, iters: usize, stdout: anytype) !void {
+fn cmdBenchOne(input: []const u8, iters: usize, stdout: anytype) !void {
     const name = if (std.mem.indexOfAny(u8, input, " \n")) |ws| input[0..ws] else input;
     try stdout.print("{s}", .{name});
     var buf: [256]u8 = undefined;
@@ -928,7 +852,7 @@ fn benchOne(input: []const u8, iters: usize, stdout: anytype) !void {
 //
 //     solver bench [--iters N]
 //
-fn benchAll(iters: usize, stdout: anytype) !void {
+fn cmdBenchAll(iters: usize, stdout: anytype) !void {
     const content = std.fs.cwd().readFileAlloc(std.heap.page_allocator, "dev/tests.txt", 1024 * 1024) catch |err| {
         try stdout.print("Failed to read dev/tests.txt: {}\n", .{err});
         return;
@@ -941,7 +865,7 @@ fn benchAll(iters: usize, stdout: anytype) !void {
         const expect_idx = std.mem.indexOfPos(u8, content, pos, "Expect:") orelse break;
         const input = std.mem.trim(u8, content[pos..expect_idx], " \n\r");
         pos = expect_idx;
-        try benchOne(input, iters, stdout);
+        try cmdBenchOne(input, iters, stdout);
     }
 }
 
@@ -949,7 +873,7 @@ fn benchAll(iters: usize, stdout: anytype) !void {
 //
 //     solver visualize --puzzle "..." [--erase false]
 //
-fn visualize(input: []const u8, erase: bool) void {
+fn cmdVisualize(input: []const u8, erase: bool) void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
@@ -958,13 +882,13 @@ fn visualize(input: []const u8, erase: bool) void {
         bw.interface.writeAll("Failed to parse puzzle\n") catch {};
         return;
     };
-    problem.visualize = true;
-    problem.erase = erase;
+    visualize = true;
+    visualize_erase = erase;
     printField(&problem);
 
     const solved = beginSolving(&problem);
 
-    if (erase) eraseField(&problem);
+    eraseField(&problem);
     if (solved) {
         printField(&problem);
     } else {
@@ -973,11 +897,24 @@ fn visualize(input: []const u8, erase: bool) void {
     }
 }
 
+// Solve a puzzle and print solution. Invoke as:
+//
+//     solver solve --puzzle "..."
+//
+fn cmdSolveOne(input: []const u8, stdout: anytype) !void {
+    var buf: [512]u8 = undefined;
+    if (solve(input, &buf)) |result| {
+        try stdout.print("{s}\n", .{result});
+    } else {
+        try stdout.print("No solution found\n", .{});
+    }
+}
+
 // Solve all puzzles from public/puzzles. Invoke as:
 //
 //     solver solve-all
 //
-fn solveAll(stdout: anytype) !void {
+fn cmdSolveAll(stdout: anytype) !void {
     const allocator = std.heap.page_allocator;
     var dir = std.fs.cwd().openDir("public/puzzles", .{ .iterate = true }) catch |err| {
         try stdout.print("Failed to open public/puzzles: {}\n", .{err});
@@ -1118,33 +1055,24 @@ pub fn main() !void {
 
     if (std.mem.eql(u8, command, "bench")) {
         if (puzzle) |p| {
-            try benchOne(p, iters, stdout);
+            try cmdBenchOne(p, iters, stdout);
         } else {
-            try benchAll(iters, stdout);
+            try cmdBenchAll(iters, stdout);
         }
     } else if (std.mem.eql(u8, command, "visualize")) {
         if (puzzle) |p| {
-            visualize(p, erase);
+            cmdVisualize(p, erase);
         } else {
             try stdout.print("visualize requires --puzzle\n", .{});
         }
     } else if (std.mem.eql(u8, command, "solve")) {
-        // Solve a puzzle and print solution. Invoke as:
-        //
-        //     solver solve --puzzle "..."
-        //
         if (puzzle) |p| {
-            var buf: [512]u8 = undefined;
-            if (solve(p, &buf)) |result| {
-                try stdout.print("{s}\n", .{result});
-            } else {
-                try stdout.print("No solution found\n", .{});
-            }
+            try cmdSolveOne(p, stdout);
         } else {
             try stdout.print("solve requires --puzzle\n", .{});
         }
     } else if (std.mem.eql(u8, command, "solve-all")) {
-        try solveAll(stdout);
+        try cmdSolveAll(stdout);
     } else {
         try stdout.print("Unknown command: {s}\n", .{command});
     }
