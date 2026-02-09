@@ -20,13 +20,15 @@ const Problem = struct {
     total_flags: usize,
     rules: Rules,
     known_indices: []const u8,
-    constrained_indices: []const u8,
+    unknown_indices: []const u8,
     unknown_count: usize,
     flag_indices: std.ArrayList(u8),
     last_checked_flag_idx: usize,
     open_indices: std.ArrayList(u8),
     last_checked_open_idx: usize,
     neighbor_masks: [64]u64,
+    remoteness: [64]i8,
+    relative_values: [64]i8,
     visualize: bool,
     erase: bool,
 
@@ -100,7 +102,7 @@ fn quadCheck(problem: *Problem) bool {
     const mask: u8 = FLAG | UNKNOWN;
     const w = problem.w;
     const h = problem.h;
-    // for (problem.constrained_indices) |idx| {
+    // for (problem.unknown_indices) |idx| {
     //     const x: usize = idx % w;
     //     const y: usize = idx / w;
     //     if (x == w - 1 or y == h - 1) continue;
@@ -131,17 +133,19 @@ fn connectedCheck(problem: *const Problem) bool {
     const size = problem.w * problem.h;
     const passable_mask: u8 = FLAG | UNKNOWN;
 
-    // Build bitmask of FLAG cells and passable (FLAG|UNKNOWN) cells
+    // Build bitmask of FLAG cells, UNKNOWN cells, and passable (FLAG|UNKNOWN) cells
     var flags: u64 = 0;
     var passable: u64 = 0;
     for (0..size) |i| {
+        const bit = @as(u64, 1) << @intCast(i);
         if (field[i] & passable_mask != 0) {
-            passable |= @as(u64, 1) << @intCast(i);
+            passable |= bit;
         }
         if (field[i] == FLAG) {
-            flags |= @as(u64, 1) << @intCast(i);
+            flags |= bit;
         }
     }
+
     if (flags == 0) return true;
 
     // Flood fill from lowest FLAG bit, moving through passable cells
@@ -159,8 +163,20 @@ fn connectedCheck(problem: *const Problem) bool {
         if (expanded == 0) break;
         visited |= expanded;
     }
-    // All flags must be reachable
-    return flags & visited == flags;
+
+    // Can't reach all flags from flags
+    if (!(flags & visited == flags)) return false;
+
+    // For each unsolved known cell, check it has enough visited neighbors
+    // to potentially satisfy its value
+    for (problem.known_indices) |ki| {
+        if (problem.relative_values[ki] <= 0) continue;
+        const neighbors = problem.neighbor_masks[ki] & visited;
+        const visited_count = @popCount(neighbors);
+        if (visited_count < field[ki]) return false;
+    }
+
+    return true;
 }
 
 // [T] Flags may not form row of three orthogonally or diagonally
@@ -311,7 +327,7 @@ fn autoFinish(problem: *Problem) bool {
         }
     }
 
-    if (checkConstraints(problem))
+    if (updateRelativeValues(problem))
         return true;
 
     // Undo
@@ -327,6 +343,43 @@ fn autoFinish(problem: *Problem) bool {
     return false;
 }
 
+fn updateRelativeValues(problem: *Problem) bool {
+    const w = problem.w;
+    const h = problem.h;
+
+    // Track which known indices we modified for undo
+    var modified: [64]u8 = undefined;
+    var modified_count: usize = 0;
+
+    for (problem.flag_indices.items[problem.last_checked_flag_idx..]) |fi| {
+        const fx = fi % w;
+        const fy = fi / w;
+        const x_start: usize = if (fx > 0) fx - 1 else 0;
+        const x_end: usize = if (fx + 1 < w) fx + 2 else w;
+        const y_start: usize = if (fy > 0) fy - 1 else 0;
+        const y_end: usize = if (fy + 1 < h) fy + 2 else h;
+        for (y_start..y_end) |ny| {
+            for (x_start..x_end) |nx| {
+                const ni = ny * w + nx;
+                if (problem.field[ni] <= 8) {
+                    problem.relative_values[ni] -= 1;
+                    modified[modified_count] = @intCast(ni);
+                    modified_count += 1;
+                }
+            }
+        }
+    }
+
+    const result = checkConstraints(problem);
+
+    // Undo relative_values changes
+    for (modified[0..modified_count]) |ni| {
+        problem.relative_values[ni] += 1;
+    }
+
+    return result;
+}
+
 fn checkConstraints(problem: *Problem) bool {
     if (problem.rules.total and !totalCheck(problem)) return false;
     if (problem.rules.anti_triplet and !antiTripletCheck(problem)) return false;
@@ -337,35 +390,86 @@ fn checkConstraints(problem: *Problem) bool {
     return diveDeeper(problem);
 }
 
+fn connectedBestCandidate(problem: *const Problem) ?usize {
+    // [C] Find a spot near the flag, preferably also next to a known cell
+    var min_rating: f64 = 1000;
+    var min_index: ?usize = null;
+    const w = problem.w;
+
+    // initial step
+    if (problem.flag_indices.items.len == 0) {
+        for (problem.known_indices) |i| {
+            const r = @as(f64, @floatFromInt(problem.relative_values[i]));
+            if (r >= min_rating) continue;
+
+            const x = i % w;
+            const y = i / w;
+            const x_start: usize = if (x > 0) x - 1 else 0;
+            const x_end: usize = if (x + 1 < problem.w) x + 2 else problem.w;
+            const y_start: usize = if (y > 0) y - 1 else 0;
+            const y_end: usize = if (y + 1 < problem.h) y + 2 else problem.h;
+            neighbours: for (y_start..y_end) |ny| {
+                for (x_start..x_end) |nx| {
+                    const nbi = ny * problem.w + nx;
+                    if (problem.field[nbi] == UNKNOWN) {
+                        min_rating = r;
+                        min_index = @intCast(nbi);
+                        break :neighbours;
+                    }
+                }
+            }
+        }
+
+        if (min_index != null) return min_index;
+
+        for (problem.unknown_indices) |i| {
+            if (problem.field[i] == UNKNOWN) {
+                return i;
+            }
+        }
+
+        return min_index;
+    }
+
+    for (problem.unknown_indices) |i| {
+        if (problem.field[i] != UNKNOWN) continue;
+        var rating: f64 = min_rating;
+        const flags = countNeighbors(problem, i, FLAG);
+
+        // only grow from existing flags
+        if (flags == 0) continue;
+
+        const x = i % w;
+        const y = i / w;
+        rating = 0;
+        for (problem.known_indices) |ki| {
+            const kx = ki % w;
+            const ky = ki / w;
+            const dx: f64 = @as(f64, @floatFromInt(x)) - @as(f64, @floatFromInt(kx));
+            const dy: f64 = @as(f64, @floatFromInt(y)) - @as(f64, @floatFromInt(ky));
+            const dist = @max(@abs(dx), @abs(dy));
+            const value = @as(f64, @floatFromInt(problem.relative_values[ki]));
+            if (value > 0) {
+                const r = dist / value;
+                rating += r;
+            }
+        }
+        rating = rating + @as(f64, @floatFromInt(flags));
+        if (rating < min_rating) {
+            min_rating = rating;
+            min_index = i;
+        }
+    }
+    return min_index;
+}
+
 fn bestCandidate(problem: *const Problem) ?usize {
     var min_rating: f64 = 1000;
     var min_index: ?usize = null;
 
+    // if (problem.rules.connected) return connectedBestCandidate(problem);
+
     rating: {
-        // [C] Find a spot near the flag, preferably also next to a known cell
-        if (problem.rules.connected) {
-            for (problem.constrained_indices) |i| {
-                if (problem.field[i] != UNKNOWN) continue;
-                const flags = countNeighbors(problem, i, FLAG);
-                if (flags == 0) continue;
-
-                const knowns = countNeighbors(problem, i, KNOWN_MASK);
-                if (knowns > 0) {
-                    min_rating = 1;
-                    min_index = i;
-                    break :rating;
-                }
-
-                const unknowns = countNeighbors(problem, i, UNKNOWN);
-                const rating = @as(f64, @floatFromInt(flags)) + @as(f64, @floatFromInt(unknowns));
-                if (rating > 0 and rating < min_rating) {
-                    min_rating = rating;
-                    min_index = i;
-                }
-            }
-            if (min_index != null) break :rating;
-        }
-
         // [Q] Pick unknown in the most constrained 2x2 quad (fewest unknowns, no flags)
         if (problem.rules.quad) {
             const w = problem.w;
@@ -392,7 +496,7 @@ fn bestCandidate(problem: *const Problem) ?usize {
                 }
             }
         }
-        
+
         // [V] pick a cell that has least to open
         if (problem.rules.vanilla) {
             for (problem.known_indices) |i| {
@@ -429,8 +533,8 @@ fn bestCandidate(problem: *const Problem) ?usize {
         return idx;
     }
 
-    // Fallback: first unknown in constrained_indices
-    for (problem.constrained_indices) |c| {
+    // Fallback: first unknown in unknown_indices
+    for (problem.unknown_indices) |c| {
         if (problem.field[c] == UNKNOWN) {
             return c;
         }
@@ -584,7 +688,7 @@ fn buildProblem(field: []u8, w: usize, h: usize, total_flags: usize, rules: Rule
     var flag_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null;
     var open_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null;
     var known_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null;
-    var constrained_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null;
+    var unknown_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null;
 
     for (0..size) |idx| {
         const val = field[idx];
@@ -594,7 +698,7 @@ fn buildProblem(field: []u8, w: usize, h: usize, total_flags: usize, rules: Rule
             open_indices.appendAssumeCapacity(@intCast(idx));
         } else if (val == UNKNOWN) {
             unknown_count += 1;
-            constrained_indices.appendAssumeCapacity(@intCast(idx));
+            unknown_indices.appendAssumeCapacity(@intCast(idx));
         }
         if (val <= 8) {
             known_indices.appendAssumeCapacity(@intCast(idx));
@@ -625,6 +729,44 @@ fn buildProblem(field: []u8, w: usize, h: usize, total_flags: usize, rules: Rule
         }
     }
 
+    // Compute remoteness: BFS distance from nearest known cell
+    var remoteness: [64]i8 = .{127} ** 64;
+    for (known_indices.items) |ki| {
+        remoteness[ki] = 0;
+    }
+    var distance: i8 = 0;
+    var changed = true;
+    while (changed) {
+        changed = false;
+        for (0..size) |idx| {
+            if (remoteness[idx] != distance) continue;
+            const x = idx % w;
+            const y = idx / w;
+            const x_start: usize = if (x > 0) x - 1 else 0;
+            const x_end: usize = if (x + 1 < w) x + 2 else w;
+            const y_start: usize = if (y > 0) y - 1 else 0;
+            const y_end: usize = if (y + 1 < h) y + 2 else h;
+            for (y_start..y_end) |ny| {
+                for (x_start..x_end) |nx| {
+                    const ni = ny * w + nx;
+                    if (remoteness[ni] > distance + 1) {
+                        remoteness[ni] = distance + 1;
+                        changed = true;
+                    }
+                }
+            }
+        }
+        distance += 1;
+    }
+
+    // Compute relative_values: cell value for known cells, 0 otherwise.
+    // Initial flags will be accounted for by the first updateRelativeValues call
+    // since last_checked_flag_idx starts at 0.
+    var relative_values: [64]i8 = .{0} ** 64;
+    for (known_indices.items) |ki| {
+        relative_values[ki] = @intCast(field[ki]);
+    }
+
     return Problem{
         .field = field,
         .w = w,
@@ -632,13 +774,15 @@ fn buildProblem(field: []u8, w: usize, h: usize, total_flags: usize, rules: Rule
         .total_flags = total_flags,
         .rules = rules,
         .known_indices = known_indices.items,
-        .constrained_indices = constrained_indices.items,
+        .unknown_indices = unknown_indices.items,
         .unknown_count = unknown_count,
         .flag_indices = flag_indices,
         .last_checked_flag_idx = 0,
         .open_indices = open_indices,
         .last_checked_open_idx = 0,
         .neighbor_masks = neighbor_masks,
+        .remoteness = remoteness,
+        .relative_values = relative_values,
         .visualize = false,
         .erase = true,
     };
@@ -710,13 +854,15 @@ fn parseRawProblem(line: []const u8, out: []u8) ?[]const u8 {
         .total_flags = undefined,
         .rules = undefined,
         .known_indices = undefined,
-        .constrained_indices = undefined,
+        .unknown_indices = undefined,
         .unknown_count = undefined,
         .flag_indices = undefined,
         .last_checked_flag_idx = undefined,
         .open_indices = undefined,
         .last_checked_open_idx = undefined,
         .neighbor_masks = undefined,
+        .remoteness = undefined,
+        .relative_values = undefined,
         .visualize = undefined,
         .erase = undefined,
     };
