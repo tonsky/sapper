@@ -4,7 +4,7 @@
     - [ ] cli
     - [ ] module per rule
   - [x] Track countNeighbors(problem, i, UNKNOWN)
-  - [ ] Somehow abstract aways neighbours iteration. Prebuild neighbours arrays?
+  - [x] Somehow abstract aways neighbours iteration. Prebuild neighbours arrays?
   - [x] Incremental quadCheck
   - [ ] Incremental vanillaCheck
   - [ ] Delete solver.cljs

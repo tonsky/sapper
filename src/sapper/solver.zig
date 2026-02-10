@@ -22,6 +22,8 @@ const Problem = struct {
     h: usize,
     total_flags: usize,
     rules: Rules,
+    neighbor_indices: [64*9]u8,
+    neighbor_masks: [64]u64,
     known_indices: []const u8,
     unknown_indices: []const u8,
     unknown_count: usize,
@@ -29,7 +31,6 @@ const Problem = struct {
     last_checked_flag_idx: usize,
     open_indices: std.ArrayList(u8),
     last_checked_open_idx: usize,
-    neighbor_masks: [64]u64,
     flags_around: [64]i8,
     unknowns_around: [64]i8,
 
@@ -37,26 +38,20 @@ const Problem = struct {
         return self.field[(y * self.w) + x] & mask != 0;
     }
 
+    fn neighbors(self: *const Problem, i: usize) []const u8 {
+        const start = i * 9 + 1;
+        const len = self.neighbor_indices[i * 9];
+        return self.neighbor_indices[start..start + len];
+    }
+
     fn setFlag(self: *Problem, i: usize) void {
         std.debug.assert(self.field[i] == UNKNOWN);
-
         self.field[i] = FLAG;
         self.flag_indices.appendAssumeCapacity(@intCast(i));
         self.unknown_count -= 1;
-
-        // Update flags_around & unknowns_around
-        const x = i % self.w;
-        const y = i / self.w;
-        const x_start: usize = if (x > 0) x - 1 else 0;
-        const x_end: usize = if (x + 1 < self.w) x + 2 else self.w;
-        const y_start: usize = if (y > 0) y - 1 else 0;
-        const y_end: usize = if (y + 1 < self.h) y + 2 else self.h;
-        for (y_start..y_end) |ny| {
-            for (x_start..x_end) |nx| {
-                const ni = ny * self.w + nx;
-                self.flags_around[ni] += 1;
-                self.unknowns_around[ni] -= 1;
-            }
+        for (self.neighbors(i)) |ni| {
+            self.flags_around[ni] += 1;
+            self.unknowns_around[ni] -= 1;
         }
     }
 
@@ -65,19 +60,8 @@ const Problem = struct {
         self.field[i] = OPEN;
         self.open_indices.appendAssumeCapacity(@intCast(i));
         self.unknown_count -= 1;
-
-        // Update unknowns_around
-        const x = i % self.w;
-        const y = i / self.w;
-        const x_start: usize = if (x > 0) x - 1 else 0;
-        const x_end: usize = if (x + 1 < self.w) x + 2 else self.w;
-        const y_start: usize = if (y > 0) y - 1 else 0;
-        const y_end: usize = if (y + 1 < self.h) y + 2 else self.h;
-        for (y_start..y_end) |ny| {
-            for (x_start..x_end) |nx| {
-                const ni = ny * self.w + nx;
-                self.unknowns_around[ni] -= 1;
-            }
+        for (self.neighbors(i)) |ni| {
+            self.unknowns_around[ni] -= 1;
         }
     }
 
@@ -85,37 +69,15 @@ const Problem = struct {
         if (self.field[i] == FLAG) {
             const popped_flag = self.flag_indices.pop();
             std.debug.assert(popped_flag == @as(u8, @intCast(i)));
-
-            // Undo flags_around & unknowns_around
-            const x = i % self.w;
-            const y = i / self.w;
-            const x_start: usize = if (x > 0) x - 1 else 0;
-            const x_end: usize = if (x + 1 < self.w) x + 2 else self.w;
-            const y_start: usize = if (y > 0) y - 1 else 0;
-            const y_end: usize = if (y + 1 < self.h) y + 2 else self.h;
-            for (y_start..y_end) |ny| {
-                for (x_start..x_end) |nx| {
-                    const ni = ny * self.w + nx;
-                    self.flags_around[ni] -= 1;
-                    self.unknowns_around[ni] += 1;
-                }
+            for (self.neighbors(i)) |ni| {
+                self.flags_around[ni] -= 1;
+                self.unknowns_around[ni] += 1;
             }
         } else if (self.field[i] == OPEN) {
             const popped_open = self.open_indices.pop();
             std.debug.assert(popped_open == @as(u8, @intCast(i)));
-
-            // Undo unknowns_around
-            const x = i % self.w;
-            const y = i / self.w;
-            const x_start: usize = if (x > 0) x - 1 else 0;
-            const x_end: usize = if (x + 1 < self.w) x + 2 else self.w;
-            const y_start: usize = if (y > 0) y - 1 else 0;
-            const y_end: usize = if (y + 1 < self.h) y + 2 else self.h;
-            for (y_start..y_end) |ny| {
-                for (x_start..x_end) |nx| {
-                    const ni = ny * self.w + nx;
-                    self.unknowns_around[ni] += 1;
-                }
+            for (self.neighbors(i)) |ni| {
+                self.unknowns_around[ni] += 1;
             }
         }
         self.field[i] = UNKNOWN;
@@ -167,8 +129,7 @@ fn quadCheck(problem: *Problem) bool {
 
     const mask: u8 = FLAG | UNKNOWN;
 
-    for (problem.last_checked_open_idx..problem.open_indices.items.len) |i| {
-        const open_idx = problem.open_indices.items[i];
+    for (problem.open_indices.items[problem.last_checked_open_idx..]) |open_idx| {
         const open_y = open_idx / problem.w;
         const open_x = open_idx % problem.w;
 
@@ -340,25 +301,23 @@ fn autoOpen(problem: *Problem) bool {
     const open_indices_len_before = problem.open_indices.items.len;
 
     for (problem.known_indices) |i| {
-        const rel = @as(i64, problem.field[i]) - @as(i64, problem.flags_around[i]);
         const unk = problem.unknowns_around[i];
-        if (unk > 0 and (rel == 0 or rel == unk)) {
-            const x: usize = i % problem.w;
-            const y: usize = i / problem.w;
-            const x_start: usize = if (x > 0) x - 1 else 0;
-            const x_end: usize = if (x + 1 < problem.w) x + 2 else problem.w;
-            const y_start: usize = if (y > 0) y - 1 else 0;
-            const y_end: usize = if (y + 1 < problem.h) y + 2 else problem.h;
+        if (unk == 0) continue;
 
-            for (y_start..y_end) |ny| {
-                for (x_start..x_end) |nx| {
-                    if (nx == x and ny == y) continue;
-                    const nbi = ny * problem.w + nx;
-                    if (problem.field[nbi] != UNKNOWN) continue;
-                    if (rel == 0)
-                        problem.setOpen(nbi)
-                    else if (rel == unk)
-                        problem.setFlag(nbi);
+        const rel = @as(i64, problem.field[i]) - @as(i64, problem.flags_around[i]);
+        if (rel == 0) {
+            for (problem.neighbors(i)) |ni| {
+                if (problem.field[ni] == UNKNOWN) {
+                    problem.setOpen(ni);
+                }
+            }
+            continue;
+        }
+
+        if (rel == unk) {
+            for (problem.neighbors(i)) |ni| {
+                if (problem.field[ni] == UNKNOWN) {
+                    problem.setFlag(ni);
                 }
             }
         }
@@ -471,24 +430,13 @@ fn bestCandidate(problem: *const Problem) ?usize {
                 const unknowns = problem.unknowns_around[i];
                 const rating = @as(f64, @floatFromInt(unknowns - rel));
                 if (unknowns > 0 and rating < min_rating) {
-                    const x = i % problem.w;
-                    const y = i / problem.w;
-                    const x_start: usize = if (x > 0) x - 1 else 0;
-                    const x_end: usize = if (x + 1 < problem.w) x + 2 else problem.w;
-                    const y_start: usize = if (y > 0) y - 1 else 0;
-                    const y_end: usize = if (y + 1 < problem.h) y + 2 else problem.h;
-
-                    neighbours: for (y_start..y_end) |ny| {
-                        for (x_start..x_end) |nx| {
-                            const nbi = ny * problem.w + nx;
-                            if (problem.field[nbi] == UNKNOWN) {
-                                min_rating = rating;
-                                min_index = @intCast(nbi);
-                                break :neighbours;
-                            }
+                    for (problem.neighbors(i)) |ni| {
+                        if (problem.field[ni] == UNKNOWN) {
+                            min_rating = rating;
+                            min_index = @intCast(ni);
+                            break;
                         }
                     }
-
                     if (min_rating <= 1) break :rating;
                 }
             }
@@ -500,9 +448,9 @@ fn bestCandidate(problem: *const Problem) ?usize {
     }
 
     // Fallback: first unknown in unknown_indices
-    for (problem.unknown_indices) |c| {
-        if (problem.field[c] == UNKNOWN) {
-            return c;
+    for (problem.field[0..], 0..) |value, i| {
+        if (value == UNKNOWN) {
+            return i;
         }
     }
 
@@ -669,24 +617,30 @@ fn buildProblem(input: []const u8, w: usize, h: usize, total_flags: usize, rules
     }
 
     // Precompute neighbor bitmasks for connected check
+    var neighbor_indices: [64 * 9]u8 = undefined;
     var neighbor_masks: [64]u64 = undefined;
     for (0..size) |i| {
         const x = i % w;
         const y = i / w;
-        var m: u64 = 0;
+        var len: u8 = 0;
+        var mask: u64 = 0;
         const x_start: usize = if (x > 0) x - 1 else 0;
         const x_end: usize = if (x + 1 < w) x + 2 else w;
         const y_start: usize = if (y > 0) y - 1 else 0;
         const y_end: usize = if (y + 1 < h) y + 2 else h;
+
         for (y_start..y_end) |ny| {
             for (x_start..x_end) |nx| {
-                const ni = ny * w + nx;
-                if (ni != i) {
-                    m |= @as(u64, 1) << @intCast(ni);
+                if (!(nx == x and ny == y)) {
+                    const ni = ny * w + nx;
+                    neighbor_indices[i * 9 + 1 + len] = @intCast(ni);
+                    len += 1;
+                    mask |= @as(u64, 1) << @intCast(ni);
                 }
             }
         }
-        neighbor_masks[i] = m;
+        neighbor_indices[i * 9] = len;
+        neighbor_masks[i] = mask;
     }
 
     var problem = Problem{
@@ -695,6 +649,8 @@ fn buildProblem(input: []const u8, w: usize, h: usize, total_flags: usize, rules
         .h = h,
         .total_flags = total_flags,
         .rules = rules,
+        .neighbor_indices = neighbor_indices,
+        .neighbor_masks = neighbor_masks,
         .known_indices = known_indices.items,
         .unknown_indices = unknown_indices.items,
         .unknown_count = unknown_count,
@@ -702,7 +658,6 @@ fn buildProblem(input: []const u8, w: usize, h: usize, total_flags: usize, rules
         .last_checked_flag_idx = 0,
         .open_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null,
         .last_checked_open_idx = 0,
-        .neighbor_masks = neighbor_masks,
         .flags_around = .{0} ** 64,
         .unknowns_around = .{0} ** 64,
     };
@@ -775,18 +730,18 @@ fn parseRawProblem(line: []const u8, allocator: std.mem.Allocator) ?Problem {
 
     var field: [64]u8 = undefined;
 
-    // Step 1: f and F → FLAG, O → marker (0x80), rest → OPEN
+    // Step 1: f and F → FLAG, O → marker (0b10000000), rest → OPEN
     for (0..size) |i| {
         field[i] = switch (encoded[i]) {
             'f', 'F' => FLAG,
-            'O' => 0x80,
+            'O' => 0b10000000,
             else => OPEN,
         };
     }
 
-    // Step 2: Replace O markers with count of neighbouring FLAGs
+    // Step 2: Replace O markers with count of neighboring FLAGs
     for (0..size) |i| {
-        if (field[i] != 0x80) continue;
+        if (field[i] != 0b10000000) continue;
         field[i] = @intCast(countNeighbors(field[0..size], w, h, i, FLAG));
     }
 
