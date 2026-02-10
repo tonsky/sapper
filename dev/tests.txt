@@ -160,10 +160,10 @@ Expect:
 
 -1-2F2-F
 -F-F-F-F
-FFF-4-5F
-FFF-FF4F
-----F5F-
-F-F-F---
+FF--4-5F
+-FF-FF4F
+---FF5F-
+F-FFF---
 2F--F3FF
 ---F---2
 

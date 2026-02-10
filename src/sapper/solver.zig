@@ -135,27 +135,18 @@ fn vanillaCheck(problem: *const Problem) bool {
 
 // [Q] Every 2x2 area must contain at least one flag
 fn quadCheck(problem: *Problem) bool {
-    const mask: u8 = FLAG | UNKNOWN;
-    const w = problem.w;
-    const h = problem.h;
-    // for (problem.unknown_indices) |idx| {
-    //     const x: usize = idx % w;
-    //     const y: usize = idx / w;
-    //     if (x == w - 1 or y == h - 1) continue;
-    //     if (problem.oneof(x, y, mask)) continue;
-    //     if (problem.oneof(x + 1, y, mask)) continue;
-    //     if (problem.oneof(x, y + 1, mask)) continue;
-    //     if (problem.oneof(x + 1, y + 1, mask)) continue;
-    //     return false;
-    // }
+    // Flagging a cell can't violate quad property
+    if (problem.last_checked_open_idx == problem.open_indices.items.len) return true;
 
-    for (problem.open_indices.items[problem.last_checked_open_idx..]) |idx| {
-        const x: usize = idx % w;
-        const y: usize = idx / w;
-        if (x > 0 and y > 0 and !problem.oneof(x - 1, y, mask) and !problem.oneof(x - 1, y - 1, mask) and !problem.oneof(x, y - 1, mask)) return false;
-        if (x < w - 1 and y > 0 and !problem.oneof(x, y - 1, mask) and !problem.oneof(x + 1, y - 1, mask) and !problem.oneof(x + 1, y, mask)) return false;
-        if (x < w - 1 and y < h - 1 and !problem.oneof(x + 1, y, mask) and !problem.oneof(x + 1, y + 1, mask) and !problem.oneof(x, y + 1, mask)) return false;
-        if (x > 0 and y < h - 1 and !problem.oneof(x, y + 1, mask) and !problem.oneof(x - 1, y + 1, mask) and !problem.oneof(x - 1, y, mask)) return false;
+    const mask: u8 = FLAG | UNKNOWN;
+    for (0..problem.h - 1) |y| {
+        for (0..problem.w - 1) |x| {
+            if (problem.oneof(x, y, mask)) continue;
+            if (problem.oneof(x + 1, y, mask)) continue;
+            if (problem.oneof(x, y + 1, mask)) continue;
+            if (problem.oneof(x + 1, y + 1, mask)) continue;
+            return false;
+        }
     }
     return true;
 }
@@ -217,6 +208,9 @@ fn connectedCheck(problem: *const Problem) bool {
 
 // [T] Flags may not form row of three orthogonally or diagonally
 fn antiTripletCheck(problem: *const Problem) bool {
+    // Openining a cell can't violate anti-triplet proprerty
+    if (problem.last_checked_flag_idx == problem.flag_indices.items.len) return true;
+
     const flag_indices = problem.flag_indices.items;
     for (flag_indices) |idx| {
         const y = idx / problem.w;
@@ -410,17 +404,23 @@ fn bestCandidate(problem: *const Problem) ?usize {
                     const bl = field[qi + w];
                     const br = field[qi + w + 1];
                     if (tl == FLAG or tr == FLAG or bl == FLAG or br == FLAG) continue;
+
                     var unknowns: f64 = 0;
-                    var unknown_idx: usize = 0;
+                    var unknown_idx: ?usize = null;
                     if (tl == UNKNOWN) { unknowns += 1; unknown_idx = qi; }
                     if (tr == UNKNOWN) { unknowns += 1; unknown_idx = qi + 1; }
                     if (bl == UNKNOWN) { unknowns += 1; unknown_idx = qi + w; }
                     if (br == UNKNOWN) { unknowns += 1; unknown_idx = qi + w + 1; }
-                    const rating = (unknowns - 1) * 3 + 1;
-                    if (unknowns > 0 and rating < min_rating) {
+
+                    if (unknowns == 1) {
+                        min_index = unknown_idx;
+                        break :rating;
+                    }
+
+                    const rating = (5 - unknowns) * 10;
+                    if (unknown_idx != null and rating < min_rating) {
                         min_rating = rating;
                         min_index = unknown_idx;
-                        if (min_rating == 1) break :rating;
                     }
                 }
             }
