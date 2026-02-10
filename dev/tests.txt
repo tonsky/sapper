@@ -179,10 +179,10 @@ Given:
 
 Expect:
 
-F-F-F
-F-F-F
-FF-F-
----F-
+F-FFF
+FFFFF
+F----
+-----
 -0---
 
 
@@ -197,11 +197,11 @@ Given:
 
 Expect:
 
-F-F-F
-FFFF-
-2-5F-
---2F-
-----F
+FFFFF
+-FFF-
+2F5F-
+--2--
+-----
 
 
 Given:
@@ -218,14 +218,14 @@ Given:
 
 Expect:
 
-F3--FF-1
-4FF-35F-
-FF---FF-
---FFF--2
-FF---FF-
-F-FFF--F
--F--3F-F
--1-----F
+F3F-FF-1
+4F--35F-
+FFF-F-FF
+FFFFFF-2
+FFF-----
+F--FFF--
+F---3---
+-1------
 
 
 Given:
@@ -242,14 +242,14 @@ Given:
 
 Expect:
 
-FF1-F-FF
-F----F--
--F-1--FF
-F-F--4F4
-F--F-FF-
-F---F--F
-F--1-F-F
-F----F-F
+FF1-FFFF
+F----FF-
+FF-1F-FF
+FF---4F4
+FFFF--F-
+F---F-F-
+---1-F--
+--------
 
 
 Given:
@@ -266,14 +266,14 @@ Given:
 
 Expect:
 
--F-F-F-F
-F3-2F--F
-F3---FF-
--F-FF-3-
---F-FF--
-FF-4FF3-
-----FF--
-FFFF-2--
+FF---FFF
+-3F2-FFF
+-3-F-F--
+FF-FF-3-
+--FFFFF-
+-F-4--3-
+-F--FF--
+--FF-2--
 
 
 Given:
@@ -290,14 +290,14 @@ Given:
 
 Expect:
 
--F-FFFFF
-1-F-----
---F-FFFF
--F-F----
--F--F-F-
-F-3-F-F-
--FF-F-F-
--F32-F--
+-FFFFFFF
+1-FFFF-F
+--FFFFFF
+FFF-----
+F-------
+F-3-----
+-FFF----
+--32----
 
 
 Given:

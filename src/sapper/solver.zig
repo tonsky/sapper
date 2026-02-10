@@ -30,7 +30,6 @@ const Problem = struct {
     open_indices: std.ArrayList(u8),
     last_checked_open_idx: usize,
     neighbor_masks: [64]u64,
-    remoteness: [64]i8,
     relative_values: [64]i8,
 
     fn oneof(self: *Problem, x: usize, y: usize, mask: u8) bool {
@@ -38,12 +37,31 @@ const Problem = struct {
     }
 
     fn setFlag(self: *Problem, i: usize) void {
+        std.debug.assert(self.field[i] == UNKNOWN);
+
         self.field[i] = FLAG;
         self.flag_indices.appendAssumeCapacity(@intCast(i));
         self.unknown_count -= 1;
+
+        // Update relative_values
+        const x = i % self.w;
+        const y = i / self.w;
+        const x_start: usize = if (x > 0) x - 1 else 0;
+        const x_end: usize = if (x + 1 < self.w) x + 2 else self.w;
+        const y_start: usize = if (y > 0) y - 1 else 0;
+        const y_end: usize = if (y + 1 < self.h) y + 2 else self.h;
+        for (y_start..y_end) |ny| {
+            for (x_start..x_end) |nx| {
+                const ni = ny * self.w + nx;
+                if (self.field[ni] <= 8) {
+                    self.relative_values[ni] -= 1;
+                }
+            }
+        }
     }
 
     fn setOpen(self: *Problem, i: usize) void {
+        std.debug.assert(self.field[i] == UNKNOWN);
         self.field[i] = OPEN;
         self.open_indices.appendAssumeCapacity(@intCast(i));
         self.unknown_count -= 1;
@@ -51,9 +69,27 @@ const Problem = struct {
 
     fn setUnknown(self: *Problem, i: usize) void {
         if (self.field[i] == FLAG) {
-            _ = self.flag_indices.pop();
+            const popped_flag = self.flag_indices.pop();
+            std.debug.assert(popped_flag == @as(u8, @intCast(i)));
+
+            // Undo relative_values
+            const x = i % self.w;
+            const y = i / self.w;
+            const x_start: usize = if (x > 0) x - 1 else 0;
+            const x_end: usize = if (x + 1 < self.w) x + 2 else self.w;
+            const y_start: usize = if (y > 0) y - 1 else 0;
+            const y_end: usize = if (y + 1 < self.h) y + 2 else self.h;
+            for (y_start..y_end) |ny| {
+                for (x_start..x_end) |nx| {
+                    const ni = ny * self.w + nx;
+                    if (self.field[ni] <= 8) {
+                        self.relative_values[ni] += 1;
+                    }
+                }
+            }
         } else if (self.field[i] == OPEN) {
-            _ = self.open_indices.pop();
+            const popped_open = self.open_indices.pop();
+            std.debug.assert(popped_open == @as(u8, @intCast(i)));
         }
         self.field[i] = UNKNOWN;
         self.unknown_count += 1;
@@ -89,11 +125,10 @@ fn totalCheck(problem: *const Problem) bool {
 // [V] Nothing special - check each numbered cell
 fn vanillaCheck(problem: *const Problem) bool {
     for (problem.known_indices) |i| {
-        const value = problem.field[i];
-        const fs = countNeighbors(problem, i, FLAG);
+        const rel = problem.relative_values[i];
         const unk = countNeighbors(problem, i, UNKNOWN);
-        if (fs > value) return false;
-        if (fs + unk < value) return false;
+        if (rel < 0) return false;
+        if (unk < rel) return false;
     }
     return true;
 }
@@ -272,10 +307,10 @@ fn autoOpen(problem: *Problem) bool {
     const open_indices_len_before = problem.open_indices.items.len;
 
     for (problem.known_indices) |i| {
-        const value = @as(i64, problem.field[i]);
-        const fs = countNeighbors(problem, i, FLAG);
+        const rel = @as(i64, problem.relative_values[i]);
+        std.debug.assert(rel == @as(i64, problem.field[i]) - countNeighbors(problem, i, FLAG));
         const unk = countNeighbors(problem, i, UNKNOWN);
-        if (unk > 0 and (value == fs or value - fs == unk)) {
+        if (unk > 0 and (rel == 0 or rel == unk)) {
             const x: usize = i % problem.w;
             const y: usize = i / problem.w;
             const x_start: usize = if (x > 0) x - 1 else 0;
@@ -288,7 +323,10 @@ fn autoOpen(problem: *Problem) bool {
                     if (nx == x and ny == y) continue;
                     const nbi = ny * problem.w + nx;
                     if (problem.field[nbi] != UNKNOWN) continue;
-                    if (value == fs) problem.setOpen(nbi) else if (value - fs == unk) problem.setFlag(nbi);
+                    if (rel == 0)
+                        problem.setOpen(nbi)
+                    else if (rel == unk)
+                        problem.setFlag(nbi);
                 }
             }
         }
@@ -329,7 +367,7 @@ fn autoFinish(problem: *Problem) bool {
         }
     }
 
-    if (updateRelativeValues(problem))
+    if (checkConstraints(problem))
         return true;
 
     // Undo
@@ -343,43 +381,6 @@ fn autoFinish(problem: *Problem) bool {
     }
 
     return false;
-}
-
-fn updateRelativeValues(problem: *Problem) bool {
-    const w = problem.w;
-    const h = problem.h;
-
-    // Track which known indices we modified for undo
-    var modified: [64]u8 = undefined;
-    var modified_count: usize = 0;
-
-    for (problem.flag_indices.items[problem.last_checked_flag_idx..]) |fi| {
-        const fx = fi % w;
-        const fy = fi / w;
-        const x_start: usize = if (fx > 0) fx - 1 else 0;
-        const x_end: usize = if (fx + 1 < w) fx + 2 else w;
-        const y_start: usize = if (fy > 0) fy - 1 else 0;
-        const y_end: usize = if (fy + 1 < h) fy + 2 else h;
-        for (y_start..y_end) |ny| {
-            for (x_start..x_end) |nx| {
-                const ni = ny * w + nx;
-                if (problem.field[ni] <= 8) {
-                    problem.relative_values[ni] -= 1;
-                    modified[modified_count] = @intCast(ni);
-                    modified_count += 1;
-                }
-            }
-        }
-    }
-
-    const result = checkConstraints(problem);
-
-    // Undo relative_values changes
-    for (modified[0..modified_count]) |ni| {
-        problem.relative_values[ni] += 1;
-    }
-
-    return result;
 }
 
 fn checkConstraints(problem: *Problem) bool {
@@ -428,10 +429,9 @@ fn bestCandidate(problem: *const Problem) ?usize {
         // [V] pick a cell that has least to open
         if (problem.rules.vanilla) {
             for (problem.known_indices) |i| {
-                const value = @as(i64, problem.field[i]);
-                const flags = countNeighbors(problem, i, FLAG);
+                const rel = @as(i64, problem.relative_values[i]);
                 const unknowns = countNeighbors(problem, i, UNKNOWN);
-                const rating = @as(f64, @floatFromInt(unknowns - value + flags));
+                const rating = @as(f64, @floatFromInt(unknowns - rel));
                 if (unknowns > 0 and rating < min_rating) {
                     const x = i % problem.w;
                     const y = i / problem.w;
@@ -610,92 +610,54 @@ fn parseId(input: []const u8) ?Meta {
     };
 }
 
-fn buildProblem(field: []u8, w: usize, h: usize, total_flags: usize, rules: Rules, allocator: std.mem.Allocator) ?Problem {
+fn buildProblem(input: []const u8, w: usize, h: usize, total_flags: usize, rules: Rules, allocator: std.mem.Allocator) ?Problem {
     const size = w * h;
-    var unknown_count: usize = 0;
-    var flag_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null;
-    var open_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null;
     var known_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null;
     var unknown_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null;
 
+    const field = allocator.alloc(u8, size) catch return null;
+    var unknown_count: usize = 0;
+
     for (0..size) |idx| {
-        const val = field[idx];
-        if (val == FLAG) {
-            flag_indices.appendAssumeCapacity(@intCast(idx));
-        } else if (val == OPEN) {
-            open_indices.appendAssumeCapacity(@intCast(idx));
-        } else if (val == UNKNOWN) {
+        const val = input[idx];
+        if (val <= 8) {
+            field[idx] = val;
+            known_indices.appendAssumeCapacity(@intCast(idx));
+        } else {
+            field[idx] = UNKNOWN;
             unknown_count += 1;
             unknown_indices.appendAssumeCapacity(@intCast(idx));
-        }
-        if (val <= 8) {
-            known_indices.appendAssumeCapacity(@intCast(idx));
-            open_indices.appendAssumeCapacity(@intCast(idx));
         }
     }
 
     // Precompute neighbor bitmasks for connected check
     var neighbor_masks: [64]u64 = undefined;
-    if (rules.connected) {
-        for (0..size) |i| {
-            const x = i % w;
-            const y = i / w;
-            var m: u64 = 0;
-            const x_start: usize = if (x > 0) x - 1 else 0;
-            const x_end: usize = if (x + 1 < w) x + 2 else w;
-            const y_start: usize = if (y > 0) y - 1 else 0;
-            const y_end: usize = if (y + 1 < h) y + 2 else h;
-            for (y_start..y_end) |ny| {
-                for (x_start..x_end) |nx| {
-                    const ni = ny * w + nx;
-                    if (ni != i) {
-                        m |= @as(u64, 1) << @intCast(ni);
-                    }
-                }
-            }
-            neighbor_masks[i] = m;
-        }
-    }
-
-    // Compute remoteness: BFS distance from nearest known cell
-    var remoteness: [64]i8 = .{127} ** 64;
-    for (known_indices.items) |ki| {
-        remoteness[ki] = 0;
-    }
-    var distance: i8 = 0;
-    var changed = true;
-    while (changed) {
-        changed = false;
-        for (0..size) |idx| {
-            if (remoteness[idx] != distance) continue;
-            const x = idx % w;
-            const y = idx / w;
-            const x_start: usize = if (x > 0) x - 1 else 0;
-            const x_end: usize = if (x + 1 < w) x + 2 else w;
-            const y_start: usize = if (y > 0) y - 1 else 0;
-            const y_end: usize = if (y + 1 < h) y + 2 else h;
-            for (y_start..y_end) |ny| {
-                for (x_start..x_end) |nx| {
-                    const ni = ny * w + nx;
-                    if (remoteness[ni] > distance + 1) {
-                        remoteness[ni] = distance + 1;
-                        changed = true;
-                    }
+    for (0..size) |i| {
+        const x = i % w;
+        const y = i / w;
+        var m: u64 = 0;
+        const x_start: usize = if (x > 0) x - 1 else 0;
+        const x_end: usize = if (x + 1 < w) x + 2 else w;
+        const y_start: usize = if (y > 0) y - 1 else 0;
+        const y_end: usize = if (y + 1 < h) y + 2 else h;
+        for (y_start..y_end) |ny| {
+            for (x_start..x_end) |nx| {
+                const ni = ny * w + nx;
+                if (ni != i) {
+                    m |= @as(u64, 1) << @intCast(ni);
                 }
             }
         }
-        distance += 1;
+        neighbor_masks[i] = m;
     }
 
-    // Compute relative_values: cell value for known cells, 0 otherwise.
-    // Initial flags will be accounted for by the first updateRelativeValues call
-    // since last_checked_flag_idx starts at 0.
+    // Initialize relative_values from known cell values
     var relative_values: [64]i8 = .{0} ** 64;
     for (known_indices.items) |ki| {
         relative_values[ki] = @intCast(field[ki]);
     }
 
-    return Problem{
+    var problem = Problem{
         .field = field,
         .w = w,
         .h = h,
@@ -704,14 +666,27 @@ fn buildProblem(field: []u8, w: usize, h: usize, total_flags: usize, rules: Rule
         .known_indices = known_indices.items,
         .unknown_indices = unknown_indices.items,
         .unknown_count = unknown_count,
-        .flag_indices = flag_indices,
+        .flag_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null,
         .last_checked_flag_idx = 0,
-        .open_indices = open_indices,
+        .open_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null,
         .last_checked_open_idx = 0,
         .neighbor_masks = neighbor_masks,
-        .remoteness = remoteness,
         .relative_values = relative_values,
     };
+
+    // Seed open_indices with known cells (they are open by definition)
+    for (known_indices.items) |ki| {
+        problem.open_indices.appendAssumeCapacity(ki);
+    }
+
+    // Apply initial flags and opens through setFlag/setOpen
+    for (0..size) |idx| {
+        const val = input[idx];
+        if (val == FLAG) problem.setFlag(idx)
+        else if (val == OPEN) problem.setOpen(idx);
+    }
+
+    return problem;
 }
 
 // Parses user-facing format like
@@ -750,7 +725,7 @@ fn parsePlayerProblem(input: []const u8, allocator: std.mem.Allocator) ?Problem 
 //
 // q means unknown open, f means unknown flag, o means unknown known,
 // Q means open, F means flag, O means known (will be replaced with number of mines)
-fn parseRawProblem(line: []const u8, out: []u8) ?[]const u8 {
+fn parseRawProblem(line: []const u8, allocator: std.mem.Allocator) ?Problem {
     const meta = parseId(line) orelse return null;
     const w = meta.w;
     const h = meta.h;
@@ -787,7 +762,6 @@ fn parseRawProblem(line: []const u8, out: []u8) ?[]const u8 {
         .open_indices = undefined,
         .last_checked_open_idx = undefined,
         .neighbor_masks = undefined,
-        .remoteness = undefined,
         .relative_values = undefined,
     };
     for (0..size) |i| {
@@ -800,18 +774,7 @@ fn parseRawProblem(line: []const u8, out: []u8) ?[]const u8 {
         if (encoded[i] >= 'a' and encoded[i] <= 'z') field[i] = UNKNOWN;
     }
 
-    // Write standard format: header + space + field chars
-    var id_end = meta.pos;
-    while (id_end > 0 and isWhitespace(line[id_end - 1])) id_end -= 1;
-    @memcpy(out[0..id_end], line[0..id_end]);
-    var len = id_end;
-    out[len] = ' ';
-    len += 1;
-    for (0..size) |i| {
-        out[len] = cellToChar(field[i])[0];
-        len += 1;
-    }
-    return out[0..len];
+    return buildProblem(field[0..size], w, h, meta.total_flags, meta.rules, allocator);
 }
 
 pub fn solve(input: []const u8, out: []u8) ?[]const u8 {
@@ -958,20 +921,21 @@ fn cmdSolveAll(stdout: anytype) !void {
         while (line_iter.next()) |line| {
             if (line.len == 0) continue;
 
-            var decoded: [256]u8 = undefined;
-            const puzzle_str = parseRawProblem(line, &decoded) orelse {
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+
+            var problem = parseRawProblem(line, arena.allocator()) orelse {
                 failed += 1;
                 const id_end = std.mem.indexOfAny(u8, line, " \t") orelse line.len;
                 try stdout.print("  PARSE ERROR: {s}\n", .{line[0..id_end]});
                 continue;
             };
 
-            var buf: [512]u8 = undefined;
             var puzzle_timer = try std.time.Timer.start();
-            const result = solve(puzzle_str, &buf);
+            const solved_ok = beginSolving(&problem);
             const puzzle_ns = puzzle_timer.read();
             const puzzle_ms = @as(f64, @floatFromInt(puzzle_ns)) / 1_000_000.0;
-            if (result != null) {
+            if (solved_ok) {
                 solved += 1;
                 if (puzzle_ms > 1.0) {
                     const id_end = std.mem.indexOfAny(u8, line, " \t") orelse line.len;
@@ -981,16 +945,8 @@ fn cmdSolveAll(stdout: anytype) !void {
                 failed += 1;
                 const id_end = std.mem.indexOfAny(u8, line, " \t") orelse line.len;
                 try stdout.print("  NO SOLUTION: {s}\n", .{line[0..id_end]});
-                try stdout.print("  decoded: {s}\n", .{puzzle_str});
-                // Print parsed field
-                var arena = std.heap.ArenaAllocator.init(allocator);
-                defer arena.deinit();
-                if (parsePlayerProblem(puzzle_str, arena.allocator())) |p| {
-                    var fbuf: [512]u8 = undefined;
-                    try stdout.print("  field:\n{s}\n", .{fieldToStr(&p, &fbuf)});
-                } else {
-                    try stdout.print("  parsePlayerProblem returned null\n", .{});
-                }
+                var fbuf: [512]u8 = undefined;
+                try stdout.print("  field:\n{s}\n", .{fieldToStr(&problem, &fbuf)});
             }
         }
 
