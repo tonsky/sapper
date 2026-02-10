@@ -6,7 +6,7 @@
   - [x] Track countNeighbors(problem, i, UNKNOWN)
   - [x] Somehow abstract aways neighbours iteration. Prebuild neighbours arrays?
   - [x] Incremental quadCheck
-  - [ ] Incremental vanillaCheck
+  - [-] Incremental vanillaCheck
   - [ ] Delete solver.cljs
   - [ ] Make CLJS use Zig solver
 - [ ] Change cursor to pencil in draw mode

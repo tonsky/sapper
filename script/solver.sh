@@ -3,7 +3,7 @@ set -o errexit -o nounset -o pipefail
 cd "`dirname $0`/.."
 
 if [ "${1:-}" = "test" ]; then
-  zig test src/sapper/solver.zig
+  zig test src-zig/solver.zig
 else
   OPT="-O ReleaseFast"
   ARGS=()
@@ -14,6 +14,6 @@ else
       ARGS+=("$arg")
     fi
   done
-  zig build-exe src/sapper/solver.zig $OPT -femit-bin=out/solver
+  zig build-exe src-zig/solver.zig $OPT -femit-bin=out/solver
   ./out/solver "${ARGS[@]}"
 fi
