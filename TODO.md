@@ -3,8 +3,8 @@
   - [ ] Separate into modules
     - [ ] cli
     - [ ] module per rule
-  - [ ] Track countNeighbors(problem, i, UNKNOWN)
-  - [ ] Somehow abstract aways neighbours iteration
+  - [x] Track countNeighbors(problem, i, UNKNOWN)
+  - [ ] Somehow abstract aways neighbours iteration. Prebuild neighbours arrays?
   - [x] Incremental quadCheck
   - [ ] Incremental vanillaCheck
   - [ ] Delete solver.cljs

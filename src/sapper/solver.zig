@@ -30,7 +30,8 @@ const Problem = struct {
     open_indices: std.ArrayList(u8),
     last_checked_open_idx: usize,
     neighbor_masks: [64]u64,
-    relative_values: [64]i8,
+    flags_around: [64]i8,
+    unknowns_around: [64]i8,
 
     fn oneof(self: *Problem, x: usize, y: usize, mask: u8) bool {
         return self.field[(y * self.w) + x] & mask != 0;
@@ -43,7 +44,7 @@ const Problem = struct {
         self.flag_indices.appendAssumeCapacity(@intCast(i));
         self.unknown_count -= 1;
 
-        // Update relative_values
+        // Update flags_around & unknowns_around
         const x = i % self.w;
         const y = i / self.w;
         const x_start: usize = if (x > 0) x - 1 else 0;
@@ -53,9 +54,8 @@ const Problem = struct {
         for (y_start..y_end) |ny| {
             for (x_start..x_end) |nx| {
                 const ni = ny * self.w + nx;
-                if (self.field[ni] <= 8) {
-                    self.relative_values[ni] -= 1;
-                }
+                self.flags_around[ni] += 1;
+                self.unknowns_around[ni] -= 1;
             }
         }
     }
@@ -65,6 +65,20 @@ const Problem = struct {
         self.field[i] = OPEN;
         self.open_indices.appendAssumeCapacity(@intCast(i));
         self.unknown_count -= 1;
+
+        // Update unknowns_around
+        const x = i % self.w;
+        const y = i / self.w;
+        const x_start: usize = if (x > 0) x - 1 else 0;
+        const x_end: usize = if (x + 1 < self.w) x + 2 else self.w;
+        const y_start: usize = if (y > 0) y - 1 else 0;
+        const y_end: usize = if (y + 1 < self.h) y + 2 else self.h;
+        for (y_start..y_end) |ny| {
+            for (x_start..x_end) |nx| {
+                const ni = ny * self.w + nx;
+                self.unknowns_around[ni] -= 1;
+            }
+        }
     }
 
     fn setUnknown(self: *Problem, i: usize) void {
@@ -72,7 +86,7 @@ const Problem = struct {
             const popped_flag = self.flag_indices.pop();
             std.debug.assert(popped_flag == @as(u8, @intCast(i)));
 
-            // Undo relative_values
+            // Undo flags_around & unknowns_around
             const x = i % self.w;
             const y = i / self.w;
             const x_start: usize = if (x > 0) x - 1 else 0;
@@ -82,34 +96,47 @@ const Problem = struct {
             for (y_start..y_end) |ny| {
                 for (x_start..x_end) |nx| {
                     const ni = ny * self.w + nx;
-                    if (self.field[ni] <= 8) {
-                        self.relative_values[ni] += 1;
-                    }
+                    self.flags_around[ni] -= 1;
+                    self.unknowns_around[ni] += 1;
                 }
             }
         } else if (self.field[i] == OPEN) {
             const popped_open = self.open_indices.pop();
             std.debug.assert(popped_open == @as(u8, @intCast(i)));
+
+            // Undo unknowns_around
+            const x = i % self.w;
+            const y = i / self.w;
+            const x_start: usize = if (x > 0) x - 1 else 0;
+            const x_end: usize = if (x + 1 < self.w) x + 2 else self.w;
+            const y_start: usize = if (y > 0) y - 1 else 0;
+            const y_end: usize = if (y + 1 < self.h) y + 2 else self.h;
+            for (y_start..y_end) |ny| {
+                for (x_start..x_end) |nx| {
+                    const ni = ny * self.w + nx;
+                    self.unknowns_around[ni] += 1;
+                }
+            }
         }
         self.field[i] = UNKNOWN;
         self.unknown_count += 1;
     }
 };
 
-fn countNeighbors(problem: *const Problem, idx: usize, mask: u8) i8 {
-    const x = idx % problem.w;
-    const y = idx / problem.w;
+fn countNeighbors(field: []u8, w: usize, h: usize, idx: usize, mask: u8) i8 {
+    const x = idx % w;
+    const y = idx / w;
     var res: i8 = 0;
 
     const x_start: usize = if (x > 0) x - 1 else 0;
-    const x_end: usize = if (x + 1 < problem.w) x + 2 else problem.w;
+    const x_end: usize = if (x + 1 < w) x + 2 else w;
     const y_start: usize = if (y > 0) y - 1 else 0;
-    const y_end: usize = if (y + 1 < problem.h) y + 2 else problem.h;
+    const y_end: usize = if (y + 1 < h) y + 2 else h;
 
     for (y_start..y_end) |ny| {
         for (x_start..x_end) |nx| {
             if (nx == x and ny == y) continue;
-            if (problem.field[ny * problem.w + nx] & mask != 0) res += 1;
+            if (field[ny * w + nx] & mask != 0) res += 1;
         }
     }
     return res;
@@ -125,8 +152,8 @@ fn totalCheck(problem: *const Problem) bool {
 // [V] Nothing special - check each numbered cell
 fn vanillaCheck(problem: *const Problem) bool {
     for (problem.known_indices) |i| {
-        const rel = problem.relative_values[i];
-        const unk = countNeighbors(problem, i, UNKNOWN);
+        const rel = @as(i64, problem.field[i]) - @as(i64, problem.flags_around[i]);
+        const unk = problem.unknowns_around[i];
         if (rel < 0) return false;
         if (unk < rel) return false;
     }
@@ -209,7 +236,7 @@ fn connectedCheck(problem: *const Problem) bool {
     // For each unsolved known cell, check it has enough visited neighbors
     // to potentially satisfy its value
     for (problem.known_indices) |ki| {
-        if (problem.relative_values[ki] <= 0) continue;
+        if (problem.flags_around[ki] >= problem.field[ki]) continue;
         const neighbors = problem.neighbor_masks[ki] & visited;
         const visited_count = @popCount(neighbors);
         if (visited_count < field[ki]) return false;
@@ -313,9 +340,8 @@ fn autoOpen(problem: *Problem) bool {
     const open_indices_len_before = problem.open_indices.items.len;
 
     for (problem.known_indices) |i| {
-        const rel = @as(i64, problem.relative_values[i]);
-        std.debug.assert(rel == @as(i64, problem.field[i]) - countNeighbors(problem, i, FLAG));
-        const unk = countNeighbors(problem, i, UNKNOWN);
+        const rel = @as(i64, problem.field[i]) - @as(i64, problem.flags_around[i]);
+        const unk = problem.unknowns_around[i];
         if (unk > 0 and (rel == 0 or rel == unk)) {
             const x: usize = i % problem.w;
             const y: usize = i / problem.w;
@@ -441,8 +467,8 @@ fn bestCandidate(problem: *const Problem) ?usize {
         // [V] pick a cell that has least to open
         if (problem.rules.vanilla) {
             for (problem.known_indices) |i| {
-                const rel = @as(i64, problem.relative_values[i]);
-                const unknowns = countNeighbors(problem, i, UNKNOWN);
+                const rel = @as(i64, problem.field[i]) - problem.flags_around[i];
+                const unknowns = problem.unknowns_around[i];
                 const rating = @as(f64, @floatFromInt(unknowns - rel));
                 if (unknowns > 0 and rating < min_rating) {
                     const x = i % problem.w;
@@ -663,12 +689,6 @@ fn buildProblem(input: []const u8, w: usize, h: usize, total_flags: usize, rules
         neighbor_masks[i] = m;
     }
 
-    // Initialize relative_values from known cell values
-    var relative_values: [64]i8 = .{0} ** 64;
-    for (known_indices.items) |ki| {
-        relative_values[ki] = @intCast(field[ki]);
-    }
-
     var problem = Problem{
         .field = field,
         .w = w,
@@ -683,8 +703,13 @@ fn buildProblem(input: []const u8, w: usize, h: usize, total_flags: usize, rules
         .open_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null,
         .last_checked_open_idx = 0,
         .neighbor_masks = neighbor_masks,
-        .relative_values = relative_values,
+        .flags_around = .{0} ** 64,
+        .unknowns_around = .{0} ** 64,
     };
+
+    for (0..size) |i| {
+        problem.unknowns_around[i] = countNeighbors(field, w, h, i, UNKNOWN);
+    }
 
     // Seed open_indices with known cells (they are open by definition)
     for (known_indices.items) |ki| {
@@ -760,25 +785,9 @@ fn parseRawProblem(line: []const u8, allocator: std.mem.Allocator) ?Problem {
     }
 
     // Step 2: Replace O markers with count of neighbouring FLAGs
-    const tmp = Problem{
-        .field = field[0..size],
-        .w = w,
-        .h = h,
-        .total_flags = undefined,
-        .rules = undefined,
-        .known_indices = undefined,
-        .unknown_indices = undefined,
-        .unknown_count = undefined,
-        .flag_indices = undefined,
-        .last_checked_flag_idx = undefined,
-        .open_indices = undefined,
-        .last_checked_open_idx = undefined,
-        .neighbor_masks = undefined,
-        .relative_values = undefined,
-    };
     for (0..size) |i| {
         if (field[i] != 0x80) continue;
-        field[i] = @intCast(countNeighbors(&tmp, i, FLAG));
+        field[i] = @intCast(countNeighbors(field[0..size], w, h, i, FLAG));
     }
 
     // Step 3: all lowercase → UNKNOWN (after O counting is done)
@@ -949,7 +958,7 @@ fn cmdSolveAll(stdout: anytype) !void {
             const puzzle_ms = @as(f64, @floatFromInt(puzzle_ns)) / 1_000_000.0;
             if (solved_ok) {
                 solved += 1;
-                if (puzzle_ms > 1.0) {
+                if (puzzle_ms > 5.0) {
                     const id_end = std.mem.indexOfAny(u8, line, " \t") orelse line.len;
                     try stdout.print("  SLOW: {s}\t{d:.1} ms\n", .{ line[0..id_end], puzzle_ms });
                 }
