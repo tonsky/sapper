@@ -139,13 +139,25 @@ fn quadCheck(problem: *Problem) bool {
     if (problem.last_checked_open_idx == problem.open_indices.items.len) return true;
 
     const mask: u8 = FLAG | UNKNOWN;
-    for (0..problem.h - 1) |y| {
-        for (0..problem.w - 1) |x| {
-            if (problem.oneof(x, y, mask)) continue;
-            if (problem.oneof(x + 1, y, mask)) continue;
-            if (problem.oneof(x, y + 1, mask)) continue;
-            if (problem.oneof(x + 1, y + 1, mask)) continue;
-            return false;
+
+    for (problem.last_checked_open_idx..problem.open_indices.items.len) |i| {
+        const open_idx = problem.open_indices.items[i];
+        const open_y = open_idx / problem.w;
+        const open_x = open_idx % problem.w;
+
+        const x_start: usize = if (open_x > 0) open_x - 1 else 0;
+        const x_end: usize = if (open_x < problem.w - 1) open_x else open_x - 1;
+        const y_start: usize = if (open_y > 0) open_y - 1 else 0;
+        const y_end: usize = if (open_y < problem.h - 1) open_y else open_y - 1;
+
+        for (y_start..y_end + 1) |y| {
+            for (x_start..x_end + 1) |x| {
+                if (problem.oneof(x, y, mask)) continue;
+                if (problem.oneof(x + 1, y, mask)) continue;
+                if (problem.oneof(x, y + 1, mask)) continue;
+                if (problem.oneof(x + 1, y + 1, mask)) continue;
+                return false;
+            }
         }
     }
     return true;

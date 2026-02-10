@@ -1,3 +1,14 @@
+- [ ] Solver
+  - [ ] Hint function
+  - [ ] Separate into modules
+    - [ ] cli
+    - [ ] module per rule
+  - [ ] Track countNeighbors(problem, i, UNKNOWN)
+  - [ ] Somehow abstract aways neighbours iteration
+  - [x] Incremental quadCheck
+  - [ ] Incremental vanillaCheck
+  - [ ] Delete solver.cljs
+  - [ ] Make CLJS use Zig solver
 - [ ] Change cursor to pencil in draw mode
 - [ ] Puzzle type: [M] Multiple. Each mine in a colored cell counts as two (Remaining mine count is unaffected by this rule). [@c] Checkedboard coloring
 - [ ] Puzzle type: [L] Liar: each clue is either one greater or one less than the actual value
