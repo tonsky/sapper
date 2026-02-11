@@ -1,4 +1,4 @@
-- [ ] Change cursor to pencil in draw mode
+- [ ] Show progress on main screen
 - [ ] Puzzle type: [M] Multiple. Each mine in a colored cell counts as two (Remaining mine count is unaffected by this rule). [@c] Checkedboard coloring
 - [ ] Puzzle type: [L] Liar: each clue is either one greater or one less than the actual value
 - [ ] Puzzle type: [W] Wall: the clue indicates the lengths of consecutive mines in the neighboring 8 cells
@@ -11,6 +11,7 @@
 - [ ] Puzzle type: [D'] Battleship: all mines must for 1x1, 1x2, 1x3 or 1x4 blocks. Blocks do not touch each other (even diagonally)
 - [ ] Puzzle type: [A]: Anti-knight: no two mines can be a knight’s move away from each other
 - [ ] Puzzle type: [H]: Horizontal. No two mines can touch horizontally
+- [ ] Change cursor to pencil in draw mode
 - [ ] Abstract away canvas operations
 - [ ] Open animation
 - [ ] Sync settings
@@ -20,7 +21,6 @@
 - [ ] Try highlighting cells instead of outline
 - [ ] New id button
 - [ ] Reset progress button
-- [ ] Show progress on main screen
 - [x] Solver
   - [x] Hint function
   - [x] Separate into modules
@@ -30,6 +30,7 @@
   - [x] Somehow abstract aways neighbours iteration. Prebuild neighbours arrays?
   - [x] Incremental quadCheck
   - [-] Incremental vanillaCheck
+  - [x] Incremental noTripletCheck
   - [x] Delete solver.cljs
   - [x] Make CLJS use Zig solver
 - [x] Puzzle type: [T] Triplet: mines may not form row of three orthogonally or diagonally

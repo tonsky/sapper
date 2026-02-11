@@ -7,7 +7,7 @@
     "watch": "pnpm exec squint watch",
     "serve": "pnpm live-server --port=8000 --no-browser public/",
     "dev": "concurrently \"pnpm watch\" \"pnpm serve\"",
-    "build:wasm": "zig build-exe src-zig/solver.zig -target wasm32-freestanding -fno-entry -O ReleaseSmall -femit-bin=public/solver.wasm --export=solve --export=hint --export=getInputBuf --export=getOutputBuf"
+    "build:wasm": "zig build-exe src-zig/solver.zig -target wasm32-freestanding -fno-entry -O ReleaseFast -femit-bin=public/solver.wasm --export=solve --export=hint --export=getInputBuf --export=getOutputBuf"
   },
   "keywords": [],
   "author": "Nikita Prokopov",
