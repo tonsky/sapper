@@ -12,16 +12,16 @@ const UNKNOWN = core.UNKNOWN;
 
 pub const Support = struct {
     field: []u8,
-    neighbor_indices: [64*9]u8,
-    neighbor_masks: [64]u64,
+    neighbor_indices: []u8,
+    neighbor_masks: []u64,
     known_indices: []const u8,
     unknown_count: usize,
     flag_indices: std.ArrayList(u8),
     last_checked_flag_idx: usize,
     open_indices: std.ArrayList(u8),
     last_checked_open_idx: usize,
-    flags_around: [64]i8,
-    unknowns_around: [64]i8,
+    flags_around: []i8,
+    unknowns_around: []i8,
 
     pub fn neighbors(self: *const Support, i: usize) []const u8 {
         const start = i * 9 + 1;
@@ -91,8 +91,8 @@ fn autoOpen(problem: *const core.Problem, support: *Support) bool {
         const unk = support.unknowns_around[i];
         if (unk == 0) continue;
 
-        const rel = @as(i64, support.field[i]) - @as(i64, support.flags_around[i]);
-        if (rel == 0) {
+        const remaining = @as(i64, support.field[i]) - @as(i64, support.flags_around[i]);
+        if (remaining == 0) {
             for (support.neighbors(i)) |ni| {
                 if (support.field[ni] == UNKNOWN) {
                     support.setOpen(ni);
@@ -101,7 +101,7 @@ fn autoOpen(problem: *const core.Problem, support: *Support) bool {
             continue;
         }
 
-        if (rel == unk) {
+        if (remaining == unk) {
             for (support.neighbors(i)) |ni| {
                 if (support.field[ni] == UNKNOWN) {
                     support.setFlag(ni);
@@ -246,8 +246,8 @@ fn buildSupport(problem: *const core.Problem, allocator: std.mem.Allocator) ?Sup
     }
 
     // Precompute neighbor bitmasks for connected check
-    var neighbor_indices: [64 * 9]u8 = undefined;
-    var neighbor_masks: [64]u64 = undefined;
+    const neighbor_indices = allocator.alloc(u8, size * 9) catch return null;
+    const neighbor_masks = allocator.alloc(u64, size) catch return null;
     for (0..size) |i| {
         const x = i % w;
         const y = i / w;
@@ -272,6 +272,11 @@ fn buildSupport(problem: *const core.Problem, allocator: std.mem.Allocator) ?Sup
         neighbor_masks[i] = mask;
     }
 
+    const flags_around = allocator.alloc(i8, size) catch return null;
+    @memset(flags_around, 0);
+    const unknowns_around = allocator.alloc(i8, size) catch return null;
+    @memset(unknowns_around, 0);
+
     var support = Support{
         .field = field,
         .neighbor_indices = neighbor_indices,
@@ -282,8 +287,8 @@ fn buildSupport(problem: *const core.Problem, allocator: std.mem.Allocator) ?Sup
         .last_checked_flag_idx = 0,
         .open_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null,
         .last_checked_open_idx = 0,
-        .flags_around = .{0} ** 64,
-        .unknowns_around = .{0} ** 64,
+        .flags_around = flags_around,
+        .unknowns_around = unknowns_around,
     };
 
     for (0..size) |i| {

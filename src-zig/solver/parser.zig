@@ -11,17 +11,9 @@ fn parseCell(ch: u8) u8 {
     };
 }
 
-fn isDigit(ch: u8) bool {
-    return ch >= '0' and ch <= '9';
-}
-
-fn isWhitespace(ch: u8) bool {
-    return ch == ' ' or ch == '\t' or ch == '\n' or ch == '\r';
-}
-
 fn parseNumber(input: []const u8, pos: *usize) ?usize {
     const start = pos.*;
-    while (pos.* < input.len and isDigit(input[pos.*])) {
+    while (pos.* < input.len and std.ascii.isDigit(input[pos.*])) {
         pos.* += 1;
     }
     if (pos.* == start) return null;
@@ -29,7 +21,7 @@ fn parseNumber(input: []const u8, pos: *usize) ?usize {
 }
 
 fn skipWhitespace(input: []const u8, pos: *usize) void {
-    while (pos.* < input.len and isWhitespace(input[pos.*])) {
+    while (pos.* < input.len and std.ascii.isWhitespace(input[pos.*])) {
         pos.* += 1;
     }
 }
@@ -75,7 +67,7 @@ fn parseId(input: []const u8) ?struct { core.Problem, usize } {
     pos += 1;
 
     // Skip puzzle id (alphanumeric)
-    while (pos < input.len and !isWhitespace(input[pos])) {
+    while (pos < input.len and !std.ascii.isWhitespace(input[pos])) {
         pos += 1;
     }
 
@@ -107,7 +99,7 @@ pub fn parsePlayerProblem(input: []const u8, allocator: std.mem.Allocator) ?core
     var idx: usize = 0;
     while (pos < input.len and idx < size) {
         const ch = input[pos];
-        if (isWhitespace(ch)) {
+        if (std.ascii.isWhitespace(ch)) {
             pos += 1;
             continue;
         }
@@ -133,7 +125,7 @@ pub fn parseRawProblem(line: []const u8, allocator: std.mem.Allocator) ?core.Pro
     const size = problem.w * problem.h;
 
     var field_end = pos;
-    while (field_end < line.len and !isWhitespace(line[field_end])) field_end += 1;
+    while (field_end < line.len and !std.ascii.isWhitespace(line[field_end])) field_end += 1;
     const encoded = line[pos..field_end];
     if (encoded.len != size) return null;
 
