@@ -447,20 +447,21 @@
       (core/request-render))))
 
 (defn solve [cell-fn]
-  (let [problem     (str/join
-                      (for [y (range (.-height field))
-                            x (range (.-width field))
-                            :let [cell                                (.get field [x y])
-                                  {:keys [open flagged secret mines]} cell
-                                  override                            (cell-fn [x y] cell)]]
-                        (cond
-                          override           override
-                          flagged             "F"
-                          (not open)          "."
-                          secret              "?"
-                          :else               (str mines))))
-        total-flags (count (filter :mine (.vals field)))]
-    (solver/solve (.-width field) (.-height field) total-flags rules problem)))
+  (let [problem (str (:id puzzle) "\n"
+                  (str/join "\n"
+                    (for [y (range (.-height field))]
+                      (str/join
+                        (for [x (range (.-width field))
+                              :let [cell                                (.get field [x y])
+                                    {:keys [open flagged secret mines]} cell
+                                    override                            (cell-fn [x y] cell)]]
+                          (cond
+                            override   override
+                            flagged    "F"
+                            (not open) "."
+                            secret     "-"
+                            :else      (str mines)))))))]
+    (solver/solve problem)))
 
 (defn open-cell [pos]
   (when (= :new phase)

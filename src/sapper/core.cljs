@@ -1,6 +1,7 @@
 (ns sapper.core
   (:require
    [clojure.string :as str]
+   [sapper.solver :as solver]
    [sapper.wake-lock :as wake-lock])
   (:require-macros
    [sapper.macros :refer [cond+]]))
@@ -158,12 +159,13 @@
                       "toggle.png"
                       "CoFoSansSemi-Mono-Regular.woff2" "CoFoSansSemi-Mono-Bold.woff2"}
                     (mapcat :resources (vals screens)))
-        *pending (atom (count resources))]
+        *pending (atom (inc (count resources)))]
     (add-watch *pending ::cb
       (fn [_ _ _ v]
         (when (= 0 v)
           (println "Loaded in" (- (js/Date.now) t0) "ms")
           (cb))))
+    (solver/init #(swap! *pending dec))
     (doseq [name resources]
       (condp re-matches name
         #".*\.png"

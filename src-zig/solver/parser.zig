@@ -76,7 +76,6 @@ fn parseId(input: []const u8) ?struct { core.Problem, usize } {
 
     return .{
         .{
-            .field = undefined,
             .w = w,
             .h = h,
             .total_flags = total_flags,
@@ -91,10 +90,10 @@ fn parseId(input: []const u8) ?struct { core.Problem, usize } {
 //   [V]5x5-10-10181 ..2.. .3... .3... ...2. ...2.
 //
 // . means uknown, - means open, F means flag, number is number of mines
-pub fn parsePlayerProblem(input: []const u8, allocator: std.mem.Allocator) ?core.Problem {
+pub fn parsePlayerProblem(input: []const u8) ?core.Problem {
     var problem, var pos = parseId(input) orelse return null;
     const size = problem.w * problem.h;
-    const field = allocator.alloc(u8, size) catch return null;
+    if (size > core.MAX_SIZE) return null;
 
     var idx: usize = 0;
     while (pos < input.len and idx < size) {
@@ -103,14 +102,13 @@ pub fn parsePlayerProblem(input: []const u8, allocator: std.mem.Allocator) ?core
             pos += 1;
             continue;
         }
-        field[idx] = parseCell(ch);
+        problem.field[idx] = parseCell(ch);
         idx += 1;
         pos += 1;
     }
 
     if (idx != size) return null; // Not enough cells
 
-    problem.field = field;
     return problem;
 }
 
@@ -120,20 +118,19 @@ pub fn parsePlayerProblem(input: []const u8, allocator: std.mem.Allocator) ?core
 //
 // q means unknown open, f means unknown flag, o means unknown known,
 // Q means open, F means flag, O means known (will be replaced with number of mines)
-pub fn parseRawProblem(line: []const u8, allocator: std.mem.Allocator) ?core.Problem {
+pub fn parseRawProblem(line: []const u8) ?core.Problem {
     var problem, const pos = parseId(line) orelse return null;
     const size = problem.w * problem.h;
+    if (size > core.MAX_SIZE) return null;
 
     var field_end = pos;
     while (field_end < line.len and !std.ascii.isWhitespace(line[field_end])) field_end += 1;
     const encoded = line[pos..field_end];
     if (encoded.len != size) return null;
 
-    const field = allocator.alloc(u8, size) catch return null;
-
     // Step 1: f and F → FLAG, O → marker (core.RESERVED), rest → OPEN
     for (0..size) |i| {
-        field[i] = switch (encoded[i]) {
+        problem.field[i] = switch (encoded[i]) {
             'f', 'F' => core.FLAG,
             'O' => core.RESERVED,
             else => core.OPEN,
@@ -142,15 +139,14 @@ pub fn parseRawProblem(line: []const u8, allocator: std.mem.Allocator) ?core.Pro
 
     // Step 2: Replace O markers with count of neighboring FLAGs
     for (0..size) |i| {
-        if (field[i] != core.RESERVED) continue;
-        field[i] = @intCast(core.countNeighbors(field[0..size], problem.w, problem.h, i, core.FLAG));
+        if (problem.field[i] != core.RESERVED) continue;
+        problem.field[i] = @intCast(core.countNeighbors(&problem.field, problem.w, problem.h, i, core.FLAG));
     }
 
     // Step 3: all lowercase → UNKNOWN (after O counting is done)
     for (0..size) |i| {
-        if (encoded[i] >= 'a' and encoded[i] <= 'z') field[i] = core.UNKNOWN;
+        if (encoded[i] >= 'a' and encoded[i] <= 'z') problem.field[i] = core.UNKNOWN;
     }
 
-    problem.field = field;
     return problem;
 }

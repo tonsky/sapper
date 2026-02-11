@@ -32,8 +32,8 @@ fn cmdBenchOne(input: []const u8, iters: usize, stdout: anytype) !void {
 //     solver bench [--iters N]
 //
 fn cmdBenchAll(iters: usize, stdout: anytype) !void {
-    const content = std.fs.cwd().readFileAlloc(std.heap.page_allocator, "dev/tests.txt", 1024 * 1024) catch |err| {
-        try stdout.print("Failed to read dev/tests.txt: {}\n", .{err});
+    const content = std.fs.cwd().readFileAlloc(std.heap.page_allocator, "dev/tests_solve.txt", 1024 * 1024) catch |err| {
+        try stdout.print("Failed to read dev/tests_solve.txt: {}\n", .{err});
         return;
     };
     defer std.heap.page_allocator.free(content);
@@ -53,24 +53,20 @@ fn cmdBenchAll(iters: usize, stdout: anytype) !void {
 //     solver visualize --puzzle "..." [--erase false]
 //
 fn cmdVisualize(input: []const u8, erase: bool) void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-
-    const problem = parser.parsePlayerProblem(input, arena.allocator()) orelse {
+    const problem = parser.parsePlayerProblem(input) orelse {
         var bw = std.fs.File.stdout().writer(&.{});
         bw.interface.writeAll("Failed to parse puzzle\n") catch {};
         return;
     };
     printer.visualize = true;
     printer.visualize_erase = erase;
-    printer.printField(&problem, problem.field);
+    printer.printField(&problem, &problem.field);
 
-    const result = algorithm.solve(&problem, arena.allocator());
-
-    printer.eraseField(&problem);
-    if (result) |solved_field| {
-        printer.printField(&problem, solved_field);
+    if (algorithm.solve(&problem)) |field| {
+        printer.eraseField(&problem);
+        printer.printField(&problem, &field);
     } else {
+        printer.eraseField(&problem);
         var bw = std.fs.File.stdout().writer(&.{});
         bw.interface.writeAll("No solution found\n") catch {};
     }
@@ -146,10 +142,7 @@ fn cmdSolveAll(stdout: anytype) !void {
         while (line_iter.next()) |line| {
             if (line.len == 0) continue;
 
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
-
-            const problem = parser.parseRawProblem(line, arena.allocator()) orelse {
+            const problem = parser.parseRawProblem(line) orelse {
                 failed += 1;
                 const id_end = std.mem.indexOfAny(u8, line, " \t") orelse line.len;
                 try stdout.print("  PARSE ERROR: {s}\n", .{line[0..id_end]});
@@ -157,7 +150,7 @@ fn cmdSolveAll(stdout: anytype) !void {
             };
 
             var puzzle_timer = try std.time.Timer.start();
-            const result = algorithm.solve(&problem, arena.allocator());
+            const result = algorithm.solve(&problem);
             const puzzle_ns = puzzle_timer.read();
             const puzzle_ms = @as(f64, @floatFromInt(puzzle_ns)) / 1_000_000.0;
             if (result != null) {
@@ -171,7 +164,7 @@ fn cmdSolveAll(stdout: anytype) !void {
                 const id_end = std.mem.indexOfAny(u8, line, " \t") orelse line.len;
                 try stdout.print("  NO SOLUTION: {s}\n", .{line[0..id_end]});
                 var fbuf: [512]u8 = undefined;
-                try stdout.print("  field:\n{s}\n", .{printer.fieldToStr(&problem, problem.field, &fbuf)});
+                try stdout.print("  field:\n{s}\n", .{printer.fieldToStr(&problem, &problem.field, &fbuf)});
             }
         }
 

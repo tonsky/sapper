@@ -7,10 +7,10 @@ const UNKNOWN = core.UNKNOWN;
 
 // [C] All mines are orthogonally or diagonally connected
 pub fn check(problem: *const core.Problem, support: *const Support) bool {
-    // Flagging a cell doesn't change connected proprerty
-    if (support.last_checked_open_idx == support.open_indices.items.len) return true;
+    // Flagging a cell doesn't change connected property
+    if (support.last_checked_open_idx == support.open_indices_len) return true;
 
-    const field = support.field;
+    const field = &support.field;
     const w = problem.w;
     const size = w * problem.h;
     const passable_mask: u8 = FLAG | UNKNOWN;
@@ -51,7 +51,7 @@ pub fn check(problem: *const core.Problem, support: *const Support) bool {
 
     // For each unsolved known cell, check it has enough visited neighbors
     // to potentially satisfy its value
-    for (support.known_indices) |ki| {
+    for (support.knownSlice()) |ki| {
         if (support.flags_around[ki] >= support.field[ki]) continue;
         const nbrs = support.neighbor_masks[ki] & visited;
         const visited_count = @popCount(nbrs);

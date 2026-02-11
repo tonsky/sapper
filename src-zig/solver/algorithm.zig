@@ -9,30 +9,47 @@ const connected = @import("rules/connected.zig");
 const FLAG = core.FLAG;
 const OPEN = core.OPEN;
 const UNKNOWN = core.UNKNOWN;
+const MAX_SIZE = core.MAX_SIZE;
 
 pub const Support = struct {
-    field: []u8,
-    neighbor_indices: []u8,
-    neighbor_masks: []u64,
-    known_indices: []const u8,
+    field: [MAX_SIZE]u8,
+    neighbor_indices: [MAX_SIZE * 9]u8,
+    neighbor_masks: [MAX_SIZE]u64,
+    known_indices: [MAX_SIZE]u8,
+    known_indices_len: usize,
     unknown_count: usize,
-    flag_indices: std.ArrayList(u8),
+    flag_indices: [MAX_SIZE]u8,
+    flag_indices_len: usize,
     last_checked_flag_idx: usize,
-    open_indices: std.ArrayList(u8),
+    open_indices: [MAX_SIZE]u8,
+    open_indices_len: usize,
     last_checked_open_idx: usize,
-    flags_around: []i8,
-    unknowns_around: []i8,
+    flags_around: [MAX_SIZE]i8,
+    unknowns_around: [MAX_SIZE]i8,
 
     pub fn neighbors(self: *const Support, i: usize) []const u8 {
         const start = i * 9 + 1;
         const len = self.neighbor_indices[i * 9];
-        return self.neighbor_indices[start..start + len];
+        return self.neighbor_indices[start .. start + len];
+    }
+
+    pub fn knownSlice(self: *const Support) []const u8 {
+        return self.known_indices[0..self.known_indices_len];
+    }
+
+    pub fn flagSlice(self: *const Support) []const u8 {
+        return self.flag_indices[0..self.flag_indices_len];
+    }
+
+    pub fn openSlice(self: *const Support) []const u8 {
+        return self.open_indices[0..self.open_indices_len];
     }
 
     fn setFlag(self: *Support, i: usize) void {
         std.debug.assert(self.field[i] == UNKNOWN);
         self.field[i] = FLAG;
-        self.flag_indices.appendAssumeCapacity(@intCast(i));
+        self.flag_indices[self.flag_indices_len] = @intCast(i);
+        self.flag_indices_len += 1;
         self.unknown_count -= 1;
         for (self.neighbors(i)) |ni| {
             self.flags_around[ni] += 1;
@@ -43,7 +60,8 @@ pub const Support = struct {
     fn setOpen(self: *Support, i: usize) void {
         std.debug.assert(self.field[i] == UNKNOWN);
         self.field[i] = OPEN;
-        self.open_indices.appendAssumeCapacity(@intCast(i));
+        self.open_indices[self.open_indices_len] = @intCast(i);
+        self.open_indices_len += 1;
         self.unknown_count -= 1;
         for (self.neighbors(i)) |ni| {
             self.unknowns_around[ni] -= 1;
@@ -52,14 +70,16 @@ pub const Support = struct {
 
     fn setUnknown(self: *Support, i: usize) void {
         if (self.field[i] == FLAG) {
-            const popped_flag = self.flag_indices.pop();
+            self.flag_indices_len -= 1;
+            const popped_flag = self.flag_indices[self.flag_indices_len];
             std.debug.assert(popped_flag == @as(u8, @intCast(i)));
             for (self.neighbors(i)) |ni| {
                 self.flags_around[ni] -= 1;
                 self.unknowns_around[ni] += 1;
             }
         } else if (self.field[i] == OPEN) {
-            const popped_open = self.open_indices.pop();
+            self.open_indices_len -= 1;
+            const popped_open = self.open_indices[self.open_indices_len];
             std.debug.assert(popped_open == @as(u8, @intCast(i)));
             for (self.neighbors(i)) |ni| {
                 self.unknowns_around[ni] += 1;
@@ -73,21 +93,21 @@ pub const Support = struct {
 
 // [*] Total amount of flags across the entire field
 fn totalCheck(problem: *const core.Problem, support: *const Support) bool {
-    const flagged = support.flag_indices.items.len;
+    const flagged = support.flag_indices_len;
     return flagged <= problem.total_flags and
         flagged + support.unknown_count >= problem.total_flags;
 }
 
 pub fn beginSolving(problem: *const core.Problem, support: *Support) bool {
-    printer.maybePrint(problem, support.field);
+    printer.maybePrint(problem, &support.field);
     return autoOpen(problem, support);
 }
 
 fn autoOpen(problem: *const core.Problem, support: *Support) bool {
-    const flag_indices_len_before = support.flag_indices.items.len;
-    const open_indices_len_before = support.open_indices.items.len;
+    const flag_indices_len_before = support.flag_indices_len;
+    const open_indices_len_before = support.open_indices_len;
 
-    for (support.known_indices) |i| {
+    for (support.knownSlice()) |i| {
         const unk = support.unknowns_around[i];
         if (unk == 0) continue;
 
@@ -114,12 +134,12 @@ fn autoOpen(problem: *const core.Problem, support: *Support) bool {
         return true;
 
     // Undo flags/opens
-    while (support.flag_indices.items.len > flag_indices_len_before) {
-        const idx = support.flag_indices.items[support.flag_indices.items.len - 1];
+    while (support.flag_indices_len > flag_indices_len_before) {
+        const idx = support.flag_indices[support.flag_indices_len - 1];
         support.setUnknown(idx);
     }
-    while (support.open_indices.items.len > open_indices_len_before) {
-        const idx = support.open_indices.items[support.open_indices.items.len - 1];
+    while (support.open_indices_len > open_indices_len_before) {
+        const idx = support.open_indices[support.open_indices_len - 1];
         support.setUnknown(idx);
     }
 
@@ -127,8 +147,8 @@ fn autoOpen(problem: *const core.Problem, support: *Support) bool {
 }
 
 fn autoFinish(problem: *const core.Problem, support: *Support) bool {
-    const flag_indices_len_before = support.flag_indices.items.len;
-    const open_indices_len_before = support.open_indices.items.len;
+    const flag_indices_len_before = support.flag_indices_len;
+    const open_indices_len_before = support.open_indices_len;
     const flagged = flag_indices_len_before;
 
     if (support.unknown_count > 0) {
@@ -149,12 +169,12 @@ fn autoFinish(problem: *const core.Problem, support: *Support) bool {
         return true;
 
     // Undo
-    while (support.flag_indices.items.len > flag_indices_len_before) {
-        const idx = support.flag_indices.items[support.flag_indices.items.len - 1];
+    while (support.flag_indices_len > flag_indices_len_before) {
+        const idx = support.flag_indices[support.flag_indices_len - 1];
         support.setUnknown(idx);
     }
-    while (support.open_indices.items.len > open_indices_len_before) {
-        const idx = support.open_indices.items[support.open_indices.items.len - 1];
+    while (support.open_indices_len > open_indices_len_before) {
+        const idx = support.open_indices[support.open_indices_len - 1];
         support.setUnknown(idx);
     }
 
@@ -193,7 +213,8 @@ fn bestCandidate(problem: *const core.Problem, support: *const Support) ?usize {
     }
 
     // Fallback: first unknown
-    for (support.field[0..], 0..) |value, i| {
+    const size = problem.w * problem.h;
+    for (support.field[0..size], 0..) |value, i| {
         if (value == UNKNOWN) {
             return i;
         }
@@ -205,8 +226,8 @@ fn bestCandidate(problem: *const core.Problem, support: *const Support) ?usize {
 fn diveDeeper(problem: *const core.Problem, support: *Support) bool {
     const candidate = bestCandidate(problem, support) orelse return false;
 
-    const last_checked_flag_idx = support.flag_indices.items.len;
-    const last_checked_open_idx = support.open_indices.items.len;
+    const last_checked_flag_idx = support.flag_indices_len;
+    const last_checked_open_idx = support.open_indices_len;
 
     // Try FLAG first
     support.last_checked_flag_idx = last_checked_flag_idx;
@@ -225,29 +246,32 @@ fn diveDeeper(problem: *const core.Problem, support: *Support) bool {
     return false;
 }
 
-fn buildSupport(problem: *const core.Problem, allocator: std.mem.Allocator) ?Support {
+pub fn buildSupport(problem: *const core.Problem) ?Support {
     const w = problem.w;
     const h = problem.h;
     const size = w * h;
-    var known_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null;
 
-    const field = allocator.alloc(u8, size) catch return null;
-    var unknown_count: usize = 0;
+    var support: Support = undefined;
+    support.known_indices_len = 0;
+    support.flag_indices_len = 0;
+    support.open_indices_len = 0;
+    support.unknown_count = 0;
+    support.last_checked_flag_idx = 0;
+    support.last_checked_open_idx = 0;
 
     for (0..size) |idx| {
         const val = problem.field[idx];
         if (val <= 8) {
-            field[idx] = val;
-            known_indices.appendAssumeCapacity(@intCast(idx));
+            support.field[idx] = val;
+            support.known_indices[support.known_indices_len] = @intCast(idx);
+            support.known_indices_len += 1;
         } else {
-            field[idx] = UNKNOWN;
-            unknown_count += 1;
+            support.field[idx] = UNKNOWN;
+            support.unknown_count += 1;
         }
     }
 
     // Precompute neighbor bitmasks for connected check
-    const neighbor_indices = allocator.alloc(u8, size * 9) catch return null;
-    const neighbor_masks = allocator.alloc(u64, size) catch return null;
     for (0..size) |i| {
         const x = i % w;
         const y = i / w;
@@ -262,42 +286,27 @@ fn buildSupport(problem: *const core.Problem, allocator: std.mem.Allocator) ?Sup
             for (x_start..x_end) |nx| {
                 if (!(nx == x and ny == y)) {
                     const ni = ny * w + nx;
-                    neighbor_indices[i * 9 + 1 + len] = @intCast(ni);
+                    support.neighbor_indices[i * 9 + 1 + len] = @intCast(ni);
                     len += 1;
                     mask |= @as(u64, 1) << @intCast(ni);
                 }
             }
         }
-        neighbor_indices[i * 9] = len;
-        neighbor_masks[i] = mask;
+        support.neighbor_indices[i * 9] = len;
+        support.neighbor_masks[i] = mask;
     }
 
-    const flags_around = allocator.alloc(i8, size) catch return null;
-    @memset(flags_around, 0);
-    const unknowns_around = allocator.alloc(i8, size) catch return null;
-    @memset(unknowns_around, 0);
-
-    var support = Support{
-        .field = field,
-        .neighbor_indices = neighbor_indices,
-        .neighbor_masks = neighbor_masks,
-        .known_indices = known_indices.items,
-        .unknown_count = unknown_count,
-        .flag_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null,
-        .last_checked_flag_idx = 0,
-        .open_indices = std.ArrayList(u8).initCapacity(allocator, size) catch return null,
-        .last_checked_open_idx = 0,
-        .flags_around = flags_around,
-        .unknowns_around = unknowns_around,
-    };
+    @memset(support.flags_around[0..size], 0);
+    @memset(support.unknowns_around[0..size], 0);
 
     for (0..size) |i| {
-        support.unknowns_around[i] = core.countNeighbors(field, w, h, i, UNKNOWN);
+        support.unknowns_around[i] = core.countNeighbors(&support.field, w, h, i, UNKNOWN);
     }
 
     // Seed open_indices with known cells (they are open by definition)
-    for (known_indices.items) |ki| {
-        support.open_indices.appendAssumeCapacity(ki);
+    for (support.known_indices[0..support.known_indices_len]) |ki| {
+        support.open_indices[support.open_indices_len] = ki;
+        support.open_indices_len += 1;
     }
 
     // Apply initial flags and opens through setFlag/setOpen
@@ -310,28 +319,24 @@ fn buildSupport(problem: *const core.Problem, allocator: std.mem.Allocator) ?Sup
     return support;
 }
 
-pub fn solve(problem: *const core.Problem, allocator: std.mem.Allocator) ?[]const u8 {
-    var support = buildSupport(problem, allocator) orelse return null;
+pub fn solve(problem: *const core.Problem) ?[MAX_SIZE]u8 {
+    var support = buildSupport(problem) orelse return null;
     if (!beginSolving(problem, &support)) return null;
     return support.field;
 }
 
-pub fn hint(problem: *const core.Problem, allocator: std.mem.Allocator) ?[]u8 {
+pub fn hint(problem: *core.Problem) [MAX_SIZE]u8 {
     const size = problem.w * problem.h;
 
-    const result = allocator.alloc(u8, size) catch return null;
-    @memcpy(result, problem.field[0..size]);
+    var result: [MAX_SIZE]u8 = undefined;
+    @memcpy(result[0..size], problem.field[0..size]);
 
     for (0..size) |i| {
         if (problem.field[i] != UNKNOWN) continue;
 
         // Test: what if this cell is a flag?
         problem.field[i] = FLAG;
-        const is_flag_possible = blk: {
-            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-            defer arena.deinit();
-            break :blk solve(problem, arena.allocator()) != null;
-        };
+        const is_flag_possible = solve(problem) != null;
         problem.field[i] = UNKNOWN;
 
         if (!is_flag_possible) {
@@ -341,11 +346,7 @@ pub fn hint(problem: *const core.Problem, allocator: std.mem.Allocator) ?[]u8 {
 
         // Test: what if this cell is open?
         problem.field[i] = OPEN;
-        const is_open_possible = blk: {
-            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-            defer arena.deinit();
-            break :blk solve(problem, arena.allocator()) != null;
-        };
+        const is_open_possible = solve(problem) != null;
         problem.field[i] = UNKNOWN;
 
         if (!is_open_possible) {

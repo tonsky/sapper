@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const core = @import("core.zig");
 
 pub var visualize: bool = false;
@@ -25,6 +26,7 @@ fn cellToChar(val: u8) []const u8 {
 }
 
 pub fn eraseField(problem: *const core.Problem) void {
+    if (builtin.cpu.arch == .wasm32 or builtin.cpu.arch == .wasm64) return;
     if (!visualize_erase) return;
     var buf: [16]u8 = undefined;
     const esc = std.fmt.bufPrint(&buf, "\x1b[{d}A", .{problem.h + 1}) catch unreachable;
@@ -49,6 +51,7 @@ pub fn fieldToStr(problem: *const core.Problem, field: []const u8, out: []u8) []
 }
 
 pub fn printField(problem: *const core.Problem, field: []const u8) void {
+    if (builtin.cpu.arch == .wasm32 or builtin.cpu.arch == .wasm64) return;
     var buf: [512]u8 = undefined;
     const str = fieldToStr(problem, field, &buf);
     var bw = std.fs.File.stdout().writer(&.{});
@@ -57,6 +60,7 @@ pub fn printField(problem: *const core.Problem, field: []const u8) void {
 }
 
 pub fn maybePrint(problem: *const core.Problem, field: []const u8) void {
+    if (builtin.cpu.arch == .wasm32 or builtin.cpu.arch == .wasm64) return;
     if (visualize) {
         eraseField(problem);
         printField(problem, field);

@@ -9,7 +9,7 @@ const UNKNOWN = core.UNKNOWN;
 pub fn check(problem: *const core.Problem, support: *const Support) bool {
     const mask: u8 = FLAG | UNKNOWN;
     const w = problem.w;
-    for (support.open_indices.items[support.last_checked_open_idx..]) |open_idx| {
+    for (support.openSlice()[support.last_checked_open_idx..]) |open_idx| {
         const open_y = open_idx / w;
         const open_x = open_idx % w;
 
@@ -35,7 +35,7 @@ pub fn check(problem: *const core.Problem, support: *const Support) bool {
 pub fn bestCandidate(problem: *const core.Problem, support: *const Support, min_rating: *f64) ?usize {
     var best: ?usize = null;
     const w = problem.w;
-    const field = support.field;
+    const field = &support.field;
     for (0..problem.h - 1) |y| {
         for (0..w - 1) |x| {
             const qi = y * w + x;

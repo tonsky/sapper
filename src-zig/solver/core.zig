@@ -1,5 +1,7 @@
 const std = @import("std");
 
+pub const MAX_SIZE = 64;
+
 pub const FLAG: u8       = 0b00010000;
 pub const OPEN: u8       = 0b00100000;
 pub const UNKNOWN: u8    = 0b01000000;
@@ -17,7 +19,7 @@ pub const Rules = packed struct {
 };
 
 pub const Problem = struct {
-    field: []u8,
+    field: [MAX_SIZE]u8 = undefined,
     w: usize,
     h: usize,
     total_flags: usize,

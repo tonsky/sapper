@@ -1,14 +1,3 @@
-- [ ] Solver
-  - [x] Hint function
-  - [x] Separate into modules
-    - [x] core, cli, parser, printer, algorithm
-    - [x] module per rule
-  - [x] Track countNeighbors(problem, i, UNKNOWN)
-  - [x] Somehow abstract aways neighbours iteration. Prebuild neighbours arrays?
-  - [x] Incremental quadCheck
-  - [-] Incremental vanillaCheck
-  - [ ] Delete solver.cljs
-  - [ ] Make CLJS use Zig solver
 - [ ] Change cursor to pencil in draw mode
 - [ ] Puzzle type: [M] Multiple. Each mine in a colored cell counts as two (Remaining mine count is unaffected by this rule). [@c] Checkedboard coloring
 - [ ] Puzzle type: [L] Liar: each clue is either one greater or one less than the actual value
@@ -32,6 +21,17 @@
 - [ ] New id button
 - [ ] Reset progress button
 - [ ] Show progress on main screen
+- [x] Solver
+  - [x] Hint function
+  - [x] Separate into modules
+    - [x] core, cli, parser, printer, algorithm
+    - [x] module per rule
+  - [x] Track countNeighbors(problem, i, UNKNOWN)
+  - [x] Somehow abstract aways neighbours iteration. Prebuild neighbours arrays?
+  - [x] Incremental quadCheck
+  - [-] Incremental vanillaCheck
+  - [x] Delete solver.cljs
+  - [x] Make CLJS use Zig solver
 - [x] Puzzle type: [T] Triplet: mines may not form row of three orthogonally or diagonally
 - [x] Puzzle type: [C] Connected: all mines are orthogonally or diagonally connected
 - [x] Puzzle type: [Q] Quad. There must be at least 1 mine in every 2x2 area

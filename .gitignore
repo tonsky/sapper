@@ -1,5 +1,6 @@
 node_modules
 /public/sapper/*.mjs
+/public/solver.wasm
 *.sync-conflict-*
 .syncthing.*
 /sync*

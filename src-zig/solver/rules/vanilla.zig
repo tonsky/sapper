@@ -7,7 +7,7 @@ const UNKNOWN = core.UNKNOWN;
 
 // [V] Nothing special - check each numbered cell
 pub fn check(support: *const Support) bool {
-    for (support.known_indices) |i| {
+    for (support.knownSlice()) |i| {
         const rel = @as(i64, support.field[i]) - @as(i64, support.flags_around[i]);
         const unk = support.unknowns_around[i];
         if (rel < 0) return false;
@@ -19,7 +19,7 @@ pub fn check(support: *const Support) bool {
 // [V] pick a cell that has least to open
 pub fn bestCandidate(support: *const Support, min_rating: *f64) ?usize {
     var best: ?usize = null;
-    for (support.known_indices) |i| {
+    for (support.knownSlice()) |i| {
         const rel = @as(i64, support.field[i]) - support.flags_around[i];
         const unknowns = support.unknowns_around[i];
         const rating = @as(f64, @floatFromInt(unknowns - rel));

@@ -8,14 +8,14 @@ const FLAG = core.FLAG;
 pub fn check(problem: *const core.Problem, support: *const Support) bool {
     const w: isize = @intCast(problem.w);
     const h: isize = @intCast(problem.h);
-    const field = support.field;
+    const field = &support.field;
 
     // Directions: horizontal, vertical, diagonal \, diagonal /
     const dirs = [_][2]isize{ .{ 1, 0 }, .{ 0, 1 }, .{ 1, 1 }, .{ -1, 1 } };
     // For each direction, check flag at start (+1,+2), middle (-1,+1), and end (-2,-1)
     const offsets = [_][2]isize{ .{ 1, 2 }, .{ -1, 1 }, .{ -2, -1 } };
 
-    for (support.flag_indices.items[support.last_checked_flag_idx..]) |idx| {
+    for (support.flagSlice()[support.last_checked_flag_idx..]) |idx| {
         const x: isize = @intCast(idx % problem.w);
         const y: isize = @intCast(idx / problem.w);
 
