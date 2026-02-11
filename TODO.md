@@ -1,8 +1,8 @@
 - [ ] Solver
   - [ ] Hint function
-  - [ ] Separate into modules
-    - [ ] cli
-    - [ ] module per rule
+  - [x] Separate into modules
+    - [x] core, cli, parser, printer, algorithm
+    - [x] module per rule
   - [x] Track countNeighbors(problem, i, UNKNOWN)
   - [x] Somehow abstract aways neighbours iteration. Prebuild neighbours arrays?
   - [x] Incremental quadCheck
