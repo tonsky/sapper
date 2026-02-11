@@ -13,3 +13,14 @@ pub fn solvePlayerProblem(input: []const u8, out: []u8) ?[]const u8 {
         return printer.fieldToStr(&problem, field, out);
     } else return null;
 }
+
+pub fn hintPlayerProblem(input: []const u8, out: []u8) ?[]const u8 {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    const problem = parser.parsePlayerProblem(input, arena.allocator()) orelse return null;
+
+    if (algorithm.hint(&problem, arena.allocator())) |field| {
+        return printer.fieldToStr(&problem, field, out);
+    } else return null;
+}

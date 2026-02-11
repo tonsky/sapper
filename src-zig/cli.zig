@@ -89,6 +89,15 @@ fn cmdSolveOne(input: []const u8, stdout: anytype) !void {
     }
 }
 
+fn cmdHint(input: []const u8, stdout: anytype) !void {
+    var buf: [512]u8 = undefined;
+    if (solver.hintPlayerProblem(input, &buf)) |result| {
+        try stdout.print("{s}\n", .{result});
+    } else {
+        try stdout.print("No hints found\n", .{});
+    }
+}
+
 // Solve all puzzles from public/puzzles. Invoke as:
 //
 //     solver solve-all
@@ -184,7 +193,7 @@ pub fn main() !void {
     defer std.process.argsFree(std.heap.page_allocator, args);
 
     if (args.len < 2) {
-        try stdout.print("Usage: solver bench [--puzzle \"...\"] [--iters N]\n       solver visualize --puzzle \"...\"\n       solver solve-all\n", .{});
+        try stdout.print("Usage: solver bench [--puzzle \"...\"] [--iters N]\n       solver visualize --puzzle \"...\"\n       solver solve --puzzle \"...\"\n       solver hint --puzzle \"...\"\n       solver solve-all\n", .{});
         return;
     }
 
@@ -243,6 +252,12 @@ pub fn main() !void {
         } else {
             try stdout.print("solve requires --puzzle\n", .{});
         }
+    } else if (std.mem.eql(u8, command, "hint")) {
+        if (puzzle) |p| {
+            try cmdHint(p, stdout);
+        } else {
+            try stdout.print("hint requires --puzzle\n", .{});
+        }
     } else if (std.mem.eql(u8, command, "solve-all")) {
         try cmdSolveAll(stdout);
     } else {
@@ -250,13 +265,13 @@ pub fn main() !void {
     }
 }
 
-test "solve puzzles from tests.txt" {
-    const content = std.fs.cwd().readFileAlloc(std.testing.allocator, "dev/tests.txt", 1024 * 1024) catch |err| {
-        std.debug.print("\nFailed to read dev/tests.txt: {}\n", .{err});
+fn runGivenExpectTests(comptime file: []const u8, solveFn: fn ([]const u8, []u8) ?[]const u8) !void {
+    const content = std.fs.cwd().readFileAlloc(std.testing.allocator, file, 1024 * 1024) catch |err| {
+        std.debug.print("\nFailed to read {s}: {}\n", .{ file, err });
         return err;
     };
     defer std.testing.allocator.free(content);
-    var buf: [256]u8 = undefined;
+    var buf: [512]u8 = undefined;
     var pos: usize = 0;
     var test_count: usize = 0;
 
@@ -272,8 +287,8 @@ test "solve puzzles from tests.txt" {
 
         pos = expect_end;
 
-        const result = solver.solvePlayerProblem(input, &buf) orelse {
-            std.debug.print("\nFAIL: solve returned null for: {s}\n", .{input[0..@min(input.len, 40)]});
+        const result = solveFn(input, &buf) orelse {
+            std.debug.print("\nFAIL: returned null for: {s}\n", .{input[0..@min(input.len, 40)]});
             return error.TestUnexpectedResult;
         };
 
@@ -286,4 +301,12 @@ test "solve puzzles from tests.txt" {
     }
 
     try std.testing.expect(test_count > 0);
+}
+
+test "solve puzzles from tests_solve.txt" {
+    try runGivenExpectTests("dev/tests_solve.txt", solver.solvePlayerProblem);
+}
+
+test "hint puzzles from tests_hint.txt" {
+    try runGivenExpectTests("dev/tests_hint.txt", solver.hintPlayerProblem);
 }

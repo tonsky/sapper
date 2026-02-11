@@ -315,3 +315,43 @@ pub fn solve(problem: *const core.Problem, allocator: std.mem.Allocator) ?[]cons
     if (!beginSolving(problem, &support)) return null;
     return support.field;
 }
+
+pub fn hint(problem: *const core.Problem, allocator: std.mem.Allocator) ?[]u8 {
+    const size = problem.w * problem.h;
+
+    const result = allocator.alloc(u8, size) catch return null;
+    @memcpy(result, problem.field[0..size]);
+
+    for (0..size) |i| {
+        if (problem.field[i] != UNKNOWN) continue;
+
+        // Test: what if this cell is a flag?
+        problem.field[i] = FLAG;
+        const is_flag_possible = blk: {
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer arena.deinit();
+            break :blk solve(problem, arena.allocator()) != null;
+        };
+        problem.field[i] = UNKNOWN;
+
+        if (!is_flag_possible) {
+            result[i] = core.SAFE;
+            continue;
+        }
+
+        // Test: what if this cell is open?
+        problem.field[i] = OPEN;
+        const is_open_possible = blk: {
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer arena.deinit();
+            break :blk solve(problem, arena.allocator()) != null;
+        };
+        problem.field[i] = UNKNOWN;
+
+        if (!is_open_possible) {
+            result[i] = core.DANGER;
+        }
+    }
+
+    return result;
+}

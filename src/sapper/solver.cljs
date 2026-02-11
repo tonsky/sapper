@@ -548,5 +548,5 @@
                   (solve w h f rules problem))
           _     (println "   Solve" (-> (- (js/performance.now) t0) (/ iters)) "ms / solve," iters "iters")])))
 
-(test)
-(bench)
+#_(test)
+#_(bench)

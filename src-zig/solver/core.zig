@@ -3,8 +3,10 @@ const std = @import("std");
 pub const FLAG: u8       = 0b00010000;
 pub const OPEN: u8       = 0b00100000;
 pub const UNKNOWN: u8    = 0b01000000;
-pub const RESERVED: u8   = 0b10000000;
 pub const KNOWN_MASK: u8 = 0b00001111;
+pub const RESERVED: u8   = 0b10000000;
+pub const DANGER: u8     = 0b10010000;
+pub const SAFE: u8       = 0b10100000;
 
 pub const Rules = packed struct {
     total: bool = false,

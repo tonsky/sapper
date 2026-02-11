@@ -18,6 +18,8 @@ fn cellToChar(val: u8) []const u8 {
         core.FLAG => "F",
         core.OPEN => "-",
         core.UNKNOWN => ".",
+        core.SAFE => "S",
+        core.DANGER => "D",
         else => unreachable,
     };
 }

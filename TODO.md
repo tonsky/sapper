@@ -1,5 +1,5 @@
 - [ ] Solver
-  - [ ] Hint function
+  - [x] Hint function
   - [x] Separate into modules
     - [x] core, cli, parser, printer, algorithm
     - [x] module per rule
