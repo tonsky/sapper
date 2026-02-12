@@ -293,6 +293,17 @@
   (let [chars "abcdefghijklmnopqrstuvwxyz0123456789"]
     (apply str (repeatedly 13 #(get chars (rand-int (count chars)))))))
 
+;; history-<type>.txt
+;;
+;; <t> <short-id> <op>
+;; 32582662 10213 s
+;; 32575966 9984 l
+;; 32530126 9181 w
+;;
+;; t        :: number of seconds since 2025-01-01
+;; short-id :: part of puzzle id after type. <type>-<short-id> == puzzle id
+;; op       :: single letter, s == start, l == lose, w == win
+
 (def t0
   (.getTime (Date. "2025-01-01")))
 
@@ -381,7 +392,68 @@
         op'             (subs op 0 1)
         v'              (str v t' " " short-id " " op' "\n")]
     (js/localStorage.setItem (history-key type) v')
-    (sync-history type)))
+    (sync-history type)
+    (when (= op :win)
+      (update-progress type))))
+
+;; progress.txt
+;; <type> <solved> <total>
+;; [V]5x5-10 172 300
+
+(def progress-key "sapper/progress")
+
+(defn parse-progress [text]
+  (into {}
+    (for [line  (str/split (or text "") #"\n")
+          :when (re-matches #"\S+ \d+ \d+" line)
+          :let  [[type solved total] (str/split line #" ")]]
+      [type {:solved (parse-long solved) :total (parse-long total)}])))
+
+(defn format-progress [progress-map]
+  (let [lines (->> progress-map
+                (map (fn [[type {:keys [solved total]}]]
+                       (str type " " solved " " total)))
+                sort)]
+    (str (str/join "\n" lines) "\n")))
+
+(defn update-progress [type]
+  (let [total          (count (get puzzles-by-type type))
+        solved         (-> (puzzle-statuses type) :won count)
+        local-text     (or (js/localStorage.getItem progress-key) "")
+        local-progress (parse-progress local-text)
+        _              (assoc! local-progress type {:solved solved :total total})
+        new-local-text (format-progress local-progress)]
+    (when (not= new-local-text local-text)
+      (js/localStorage.setItem progress-key new-local-text)
+      (sync-progress))))
+
+(defn sync-progress []
+  (let [url (str "https://sapper.tonsky.me/sync/" @*sync-id "/progress.txt")]
+    (-> (js/fetch url)
+      (.then (fn [response]
+               (if (.-ok response)
+                 (.text response)
+                 "")))
+      (.catch (fn [_] ""))
+      (.then
+        (fn [server-text]
+          (let [server-progress (parse-progress server-text)
+                local-text      (or (js/localStorage.getItem progress-key) "")
+                local-progress  (parse-progress local-text)
+                merged          (merge-with
+                                  (fn [a b]
+                                    {:solved (max (:solved a) (:solved b))
+                                     :total  (:total b)})
+                                  server-progress
+                                  local-progress)
+                merged-text     (format-progress merged)]
+            (when (not= merged-text local-text)
+              (js/localStorage.setItem progress-key merged-text))
+            (when (not= merged-text server-text)
+              (js/fetch url
+                {:method  "PUT"
+                 :body    merged-text
+                 :headers {"Content-Type" "text/plain"}}))))))))
 
 (defn upgrade-storage-v1 []
   (let [history (-> (or (js/localStorage.getItem "history") "")
