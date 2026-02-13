@@ -6,3 +6,9 @@ body { touch-action: none; }
 body { background-color: #0E2E4E; }
 canvas { position: absolute; top: 0; left: 0; width: 100dvw; height: 100dvh; }
 #notes { pointer-events: none; }
+
+body.color1 { cursor: -webkit-image-set(url(/i/cursor_color_1.png) 2x) 4 28, default; }
+body.color2 { cursor: -webkit-image-set(url(/i/cursor_color_2.png) 2x) 4 28, default; }
+body.color3 { cursor: -webkit-image-set(url(/i/cursor_color_3.png) 2x) 4 28, default; }
+body.color4 { cursor: -webkit-image-set(url(/i/cursor_color_4.png) 2x) 4 28, default; }
+body.eraser { cursor: -webkit-image-set(url(/i/cursor_eraser.png) 2x) 24 24, default; }

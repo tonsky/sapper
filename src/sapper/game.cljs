@@ -209,9 +209,12 @@
     (set! hinted-pos nil)
     (set! phase :new)
     (set! dragging-flag false)
-    (set! tool nil)
+    (set-tool nil)
     (set! notes [])
     (set! anim-start (js/Date.now))))
+
+(defn on-exit []
+  (set-tool nil))
 
 (defn on-render []
   (let [anim-progress (core/clamp (/ (- (js/Date.now) anim-start) anim-length) 0 1)
@@ -410,16 +413,6 @@
         (.stroke notes-ctx)
         (when (= :eraser t)
           (set! (.-globalCompositeOperation notes-ctx) "source-over"))))
-
-    ;; Eraser cursor
-    (when (or
-            (= :eraser tool)
-            (and tool (= :mouse-right core/pointer-device)))
-      (set! (.-strokeStyle overlay-ctx) "#FFFFFF20")
-      (set! (.-lineWidth overlay-ctx) 1)
-      (.beginPath overlay-ctx)
-      (.arc overlay-ctx core/pointer-x core/pointer-y 20 0 (* 2 js/Math.PI))
-      (.stroke overlay-ctx))
 
     ;; Dragged flag
     (when dragging-flag
@@ -701,6 +694,13 @@
     (request-auto-open)
     true))
 
+(defn set-tool [t]
+  (when tool
+    (.remove js/document.body.classList tool))
+  (when t
+    (.add js/document.body.classList t))
+  (set! tool t))
+
 (defn on-tool-click [tool']
   (case tool'
     :undo
@@ -709,14 +709,14 @@
     :clear
     (do
       (set! notes [])
-      (set! tool nil)
+      (set-tool nil)
       (core/request-render))
 
     (:eraser :color1 :color2 :color3 :color4)
     (do
       (if (= tool tool')
-        (set! tool nil)
-        (set! tool tool'))
+        (set-tool nil)
+        (set-tool tool'))
       (core/request-render))))
 
 (defn on-key-down [e]
@@ -763,7 +763,7 @@
         (cond
           tool
           (do
-            (set! tool nil)
+            (set-tool nil)
             (core/request-render))
 
           outline-pos
@@ -789,7 +789,7 @@
       (:flagged cell))
     (do
       (set! dragging-flag true)
-      (set! tool nil)
+      (set-tool nil)
       (assoc! cell :flagged false)
       (update-field))
 
@@ -802,7 +802,7 @@
       (core/inside? x y l t w h margin))
     (do
       (set! dragging-flag true)
-      (set! tool nil)
+      (set-tool nil)
       (core/request-render))))
 
 (defn on-pointer-move [{:keys [x y device] :as e}]
@@ -897,6 +897,7 @@
 
 (assoc! core/screens :game
   {:on-enter        on-enter
+   :on-exit         on-exit
    :on-reenter      update-field
    :on-render       on-render
    :on-key-down     on-key-down

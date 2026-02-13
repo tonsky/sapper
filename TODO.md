@@ -10,7 +10,6 @@
 - [ ] Puzzle type: [D'] Battleship: all mines must for 1x1, 1x2, 1x3 or 1x4 blocks. Blocks do not touch each other (even diagonally)
 - [ ] Puzzle type: [A]: Anti-knight: no two mines can be a knight’s move away from each other
 - [ ] Puzzle type: [H]: Horizontal. No two mines can touch horizontally
-- [ ] Change cursor to pencil in draw mode
 - [ ] Abstract away canvas operations
 - [ ] Open animation
 - [ ] Sync settings
@@ -20,6 +19,7 @@
 - [ ] Try highlighting cells instead of outline
 - [ ] New id button
 - [ ] Reset progress button
+- [x] Change cursors when tools are active
 - [x] Show progress on main screen
   - [x] Store and sync progress
 - [x] Solver
