@@ -38,7 +38,8 @@
   (let [puzzles (get core/puzzles-by-type type)
         {:keys [won lost started]} statuses
         img     (get core/images "level_select.png")
-        rng     (core/make-rng (js/parseInt (subs type 3 4)))]
+        seed    (js/parseInt (str/join (re-seq #"\d+" type)))
+        rng     (core/make-rng seed)]
     (doseq [[i puzzle] (core/indexed puzzles)
             :let [random       (core/advance-rng rng)
                   x            (mod i 18)

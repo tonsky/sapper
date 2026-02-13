@@ -39,12 +39,18 @@ fn parseId(input: []const u8) ?struct { core.Problem, usize } {
             pos += 1;
         }
         const rule = input[rule_start..pos];
-        if (std.mem.eql(u8, rule, "T")) {
+        if (std.mem.eql(u8, rule, "V")) {
+            // vanilla, no extra rule
+        } else if (std.mem.eql(u8, rule, "T")) {
             rules.no_triplet = true;
+        } else if (std.mem.eql(u8, rule, "T'")) {
+            rules.triplet = true;
         } else if (std.mem.eql(u8, rule, "Q")) {
             rules.quad = true;
         } else if (std.mem.eql(u8, rule, "C")) {
             rules.connected = true;
+        } else {
+            return null; // unknown rule
         }
         if (pos < input.len) pos += 1; // skip ']'
     }

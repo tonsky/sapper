@@ -144,11 +144,12 @@
 
 (defn puzzle-rules [id]
   (cond
-    (str/starts-with? id "[V]") #{:total :vanilla}
-    (str/starts-with? id "[Q]") #{:total :vanilla :quad}
-    (str/starts-with? id "[C]") #{:total :vanilla :connected}
-    (str/starts-with? id "[T]") #{:total :vanilla :anti-triplet}
-    :else                       (throw (js/Error. "Unknown puzzle type"))))
+    (str/starts-with? id "[V]")  #{:total :vanilla}
+    (str/starts-with? id "[Q]")  #{:total :vanilla :quad}
+    (str/starts-with? id "[C]")  #{:total :vanilla :connected}
+    (str/starts-with? id "[T]")  #{:total :vanilla :no-triplet}
+    (str/starts-with? id "[T']") #{:total :vanilla :triplet}
+    :else                        (throw (js/Error. "Unknown puzzle type"))))
 
 ;; Resources
 

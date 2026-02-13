@@ -14,6 +14,7 @@ pub const Rules = packed struct {
     total: bool = false,
     vanilla: bool = false,
     no_triplet: bool = false,
+    triplet: bool = false,
     quad: bool = false,
     connected: bool = false,
 };

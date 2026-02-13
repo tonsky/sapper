@@ -6,7 +6,6 @@
 - [ ] Puzzle type: [D] Dual: all mines must form 1x2 or 2x1 blocks. Blocks do not touch each other
 - [ ] Puzzle type: [X] Cross: the clue indicates the number of mines in a cross region withing distance 2
 - [ ] Puzzle type: [S] Snake: all mines form a single snake whose body does not touch itself
-- [ ] Puzzle type: [T'] Triplet': Mines must be a part of row of three orthogonally or diagonally
 - [ ] Puzzle type: [D'] Battleship: all mines must for 1x1, 1x2, 1x3 or 1x4 blocks. Blocks do not touch each other (even diagonally)
 - [ ] Puzzle type: [A]: Anti-knight: no two mines can be a knight’s move away from each other
 - [ ] Puzzle type: [H]: Horizontal. No two mines can touch horizontally
@@ -14,11 +13,12 @@
 - [ ] Open animation
 - [ ] Sync settings
 - [ ] Store last level state and notes
-- [ ] Unopened cells count as a number
+- [ ] Show unopened cells count
 - [ ] Controls on the left on iPad?
 - [ ] Try highlighting cells instead of outline
 - [ ] New id button
 - [ ] Reset progress button
+- [x] Puzzle type: [T'] Triplet': Mines must be a part of row of three orthogonally or diagonally
 - [x] Change cursors when tools are active
 - [x] Show progress on main screen
   - [x] Store and sync progress

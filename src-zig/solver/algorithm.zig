@@ -4,6 +4,7 @@ const printer = @import("printer.zig");
 const vanilla = @import("rules/vanilla.zig");
 const quad = @import("rules/quad.zig");
 const no_triplet = @import("rules/no_triplet.zig");
+const triplet = @import("rules/triplet.zig");
 const connected = @import("rules/connected.zig");
 
 const FLAG = core.FLAG;
@@ -184,6 +185,7 @@ fn autoFinish(problem: *const core.Problem, support: *Support) bool {
 fn checkConstraints(problem: *const core.Problem, support: *Support) bool {
     if (problem.rules.total and !totalCheck(problem, support)) return false;
     if (problem.rules.no_triplet and !no_triplet.check(problem, support)) return false;
+    if (problem.rules.triplet and !triplet.check(problem, support)) return false;
     if (problem.rules.quad and !quad.check(problem, support)) return false;
     if (problem.rules.connected and !connected.check(problem, support)) return false;
     if (problem.rules.vanilla and !vanilla.check(support)) return false;

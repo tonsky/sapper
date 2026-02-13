@@ -5,10 +5,11 @@
 (def progress)
 
 (def types
-  [[0 "Vanilla"   "[V]"]
-   [1 "Quad"      "[Q]"]
-   [2 "Connected" "[C]"]
-   [3 "Triplets"  "[T]"]])
+  [[0 "Vanilla"     "[V]"]
+   [1 "Quad"        "[Q]"]
+   [2 "Connected"   "[C]"]
+   [3 "No triplets" "[T]"]
+   [4 "Triplets"    "[T']"]])
 
 (def sizes
   [[0 "5×5" "5x5-10"]
@@ -66,7 +67,11 @@
                 t  (+ buttons-top (* row (+ button-h button-gap-h)) button-h)
                 h  20
                 w  (max h (+ 10 (* 8 (count (str solved)))))]]
-    (set! (.-fillStyle ctx) "#0D2E4E")
+    (set! (.-fillStyle ctx)
+      (cond
+        (>= solved 10) "#ffd400"
+        (>= solved 3)  "#fff"
+        :else          "#0D2E4E"))
     (.beginPath ctx)
     (.roundRect ctx (- l (quot w 2)) (- t (quot h 2)) w h (quot h 2))
     (.fill ctx)
@@ -76,10 +81,10 @@
     (set! (.-textBaseline ctx) "middle")
     (set! (.-fillStyle ctx)
       (cond
-        (>= solved 10) "#ffd400"
-        (>= solved 3)  "#fff"
+        (>= solved 10) "#0D2E4E"
+        (>= solved 3)  "#0D2E4E"
         :else          "#8697A7"))
-    (.fillText ctx solved l t))
+    (.fillText ctx solved l (+ t 0.5)))
 
   ;; Puzzle types
   (set! (.-font ctx) "16px font")
