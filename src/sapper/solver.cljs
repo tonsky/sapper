@@ -34,3 +34,12 @@
       (when (pos? len)
         (let [result (.decode decoder (.slice output-buf 0 len))]
           (str/replace result "\n" ""))))))
+
+(defn hint [input]
+  (when wasm
+    (let [encoded  (.encode encoder input)
+          _        (.set input-buf encoded)
+          len      (.hint wasm (.-length encoded))]
+      (when (pos? len)
+        (let [result (.decode decoder (.slice output-buf 0 len))]
+          (str/replace result "\n" ""))))))

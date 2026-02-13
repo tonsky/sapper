@@ -572,75 +572,48 @@
         (update-field)))))
 
 (defn hint []
-  (cond+
-    (#{:game-over :victory} phase)
-    :noop
+  (when-not (#{:game-over :victory} phase)
+    (let [t       (js/performance.now)
+          w       (.-width field)
+          problem (str (:id puzzle) "\n"
+                    (str/join "\n"
+                      (for [y (range (.-height field))]
+                        (str/join
+                          (for [x (range w)
+                                :let [{:keys [open flagged secret mines]} (.get field [x y])]]
+                            (cond
+                              flagged    "."
+                              (not open) "."
+                              secret     "-"
+                              :else      (str mines)))))))]
+      (if-some [result (solver/hint problem)]
+        (set! hinted-pos
+          (reduce
+            (fn [_ [x y :as pos]]
+              (let [i    (+ x (* y w))
+                    {:keys [open flagged secret mines]} (get-cell pos)
+                    hint (.charAt result i)]
+                (cond
+                  ;; wrong flag
+                  (and flagged (not= "D" hint))
+                  (do
+                    (println "wrong flag" pos "in" (core/delta-t t))
+                    (reduced pos))
 
-    :let [flagged-cells (->> cell-order
-                          (filterv #(:flagged (get-cell %))))]
+                  ;; flag hint
+                  (and (not open) (not flagged) (= "D" hint))
+                  (do
+                    (println "flag hint" pos "in" (core/delta-t t))
+                    (reduced pos))
 
-    ;; cell was incorrectly flagged
-    :let [t               (js/performance.now)
-          *iters          (atom 0)
-          wrong-flag-hint (some
-                            (fn [pos]
-                              (swap! *iters inc)
-                              (when (solve (fn [pos' _]
-                                             (cond
-                                               (= pos pos') "?")))
-                                pos))
-                            flagged-cells)
-          _               (when (pos? @*iters)
-                            (println "Wrong flags check," @*iters "iterations," (core/delta-t t)))]
-
-    wrong-flag-hint
-    (do
-      (set! hinted-pos wrong-flag-hint)
-      (core/request-render))
-
-    :let [unprocessed-cells (->> cell-order
-                              (filterv #(not (processed (get-cell %)))))]
-
-    ;; cell can't possibly be opened
-    :let [t         (js/performance.now)
-          *iters    (atom 0)
-          flag-hint (some
-                      (fn [pos]
-                        (swap! *iters inc)
-                        (when-not (solve (fn [pos' _]
-                                           (cond
-                                             (= pos pos') "?")))
-                          pos))
-                      unprocessed-cells)
-          _         (when (pos? @*iters)
-                      (println "Flags hint," @*iters "iterations," (core/delta-t t)))]
-
-    flag-hint
-    (do
-      (set! hinted-pos flag-hint)
-      (core/request-render))
-
-    ;; cell can't possibly be flagged
-    :let [t         (js/performance.now)
-          *iters    (atom 0)
-          open-hint (some
-                      (fn [pos]
-                        (swap! *iters inc)
-                        (when-not (solve (fn [pos' _]
-                                           (cond
-                                             (= pos pos') "F")))
-                          pos))
-                      unprocessed-cells)
-          _         (when (pos? @*iters)
-                      (println "Open hint," @*iters "iterations," (core/delta-t t)))]
-
-    open-hint
-    (do
-      (set! hinted-pos open-hint)
-      (core/request-render))
-
-    :else
-    (println "No hint")))
+                  ;; open hint
+                  (and (not open) (not flagged) (= "S" hint))
+                  (do
+                    (println "open hint" pos "in" (core/delta-t t))
+                    (reduced pos)))))
+            nil
+            cell-order))
+        (println "No hint in" (core/delta-t t))))))
 
 (defn auto-finish []
   (when-some [action (can-auto-finish?)]
