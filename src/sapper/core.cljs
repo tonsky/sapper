@@ -427,7 +427,7 @@
       (js/localStorage.setItem progress-key new-local-text)
       (sync-progress))))
 
-(defn sync-progress []
+(defn sync-progress [cb]
   (let [url (str "https://sapper.tonsky.me/sync/" @*sync-id "/progress.txt")]
     (-> (js/fetch url)
       (.then (fn [response]
@@ -453,7 +453,9 @@
               (js/fetch url
                 {:method  "PUT"
                  :body    merged-text
-                 :headers {"Content-Type" "text/plain"}}))))))))
+                 :headers {"Content-Type" "text/plain"}}))
+            (when cb
+              (cb merged))))))))
 
 (defn upgrade-storage-v1 []
   (let [history (-> (or (js/localStorage.getItem "history") "")

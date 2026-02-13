@@ -1,5 +1,3 @@
-- [ ] Show progress on main screen
-  - [x] Store and sync progress
 - [ ] Puzzle type: [M] Multiple. Each mine in a colored cell counts as two (Remaining mine count is unaffected by this rule). [@c] Checkedboard coloring
 - [ ] Puzzle type: [L] Liar: each clue is either one greater or one less than the actual value
 - [ ] Puzzle type: [W] Wall: the clue indicates the lengths of consecutive mines in the neighboring 8 cells
@@ -22,6 +20,8 @@
 - [ ] Try highlighting cells instead of outline
 - [ ] New id button
 - [ ] Reset progress button
+- [x] Show progress on main screen
+  - [x] Store and sync progress
 - [x] Solver
   - [x] Hint function
   - [x] Separate into modules

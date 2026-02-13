@@ -2,6 +2,8 @@
   (:require
    [sapper.core :as core :refer [ctx canvas-w canvas-h]]))
 
+(def progress)
+
 (def types
   [[0 "Vanilla"   "[V]"]
    [1 "Quad"      "[Q]"]
@@ -17,20 +19,27 @@
 (def buttons-left 195)
 (def buttons-top 200)
 (def button-w 60)
+(def button-h 40)
+(def button-gap-w 26)
+(def button-gap-h 20)
 
 (def buttons)
 
 (defn on-enter []
+  (set! progress
+    (core/parse-progress
+      (or (js/localStorage.getItem core/progress-key) "")))
+  (core/sync-progress #(set! progress %))
   (set! buttons
     (vec
       (concat
         [{:l (- core/safe-w 60) :t 10 :w 50 :h 50 :icon "btn_settings.png" :on-click #(core/navigate [:settings])}]
         (for [[row type-label type] types
               [col size-label size] sizes]
-          {:l        (+ buttons-left (* col (+ button-w 20)))
-           :t        (+ buttons-top (* row (+ 50 20)))
+          {:l        (+ buttons-left (* col (+ button-w button-gap-w)))
+           :t        (+ buttons-top (* row (+ button-h button-gap-h)))
            :w        button-w
-           :h        50
+           :h        button-h
            :text     size-label
            :on-click (fn [_]
                        (core/navigate [:level-select (str type size)]))})))))
@@ -47,13 +56,38 @@
   (doseq [b buttons]
     (core/button-render b))
 
+  ;; Progress
+
+  (doseq [[row type-label type] types
+          [col size-label size] sizes
+          :let [{:keys [solved total]} (get progress (str type size))]
+          :when (pos? solved)
+          :let [l  (+ buttons-left (* col (+ button-w button-gap-w)) button-w)
+                t  (+ buttons-top (* row (+ button-h button-gap-h)) button-h)
+                h  20
+                w  (max h (+ 10 (* 8 (count (str solved)))))]]
+    (set! (.-fillStyle ctx) "#0D2E4E")
+    (.beginPath ctx)
+    (.roundRect ctx (- l (quot w 2)) (- t (quot h 2)) w h (quot h 2))
+    (.fill ctx)
+
+    (set! (.-font ctx) "13px font")
+    (set! (.-textAlign ctx) "center")
+    (set! (.-textBaseline ctx) "middle")
+    (set! (.-fillStyle ctx)
+      (cond
+        (>= solved 10) "#ffd400"
+        (>= solved 3)  "#fff"
+        :else          "#8697A7"))
+    (.fillText ctx solved l t))
+
   ;; Puzzle types
   (set! (.-font ctx) "16px font")
   (set! (.-textAlign ctx) "left")
   (set! (.-textBaseline ctx) "middle")
   (set! (.-fillStyle ctx) "#fff")
   (doseq [[row type-label _] types]
-    (.fillText ctx type-label 85 (+ buttons-top (* row (+ 50 20)) 25))))
+    (.fillText ctx type-label 85 (+ buttons-top (* row (+ button-h button-gap-h)) (quot button-h 2)))))
 
 (defn on-pointer-move [e]
   (doseq [b buttons]
