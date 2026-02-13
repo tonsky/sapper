@@ -258,9 +258,9 @@ pub fn main() !void {
     }
 }
 
-fn runGivenExpectTests(comptime file: []const u8, solveFn: fn ([]const u8, []u8) ?[]const u8) !void {
-    const content = std.fs.cwd().readFileAlloc(std.testing.allocator, file, 1024 * 1024) catch |err| {
-        std.debug.print("\nFailed to read {s}: {}\n", .{ file, err });
+test "solve and hint puzzles from tests.txt" {
+    const content = std.fs.cwd().readFileAlloc(std.testing.allocator, "dev/tests.txt", 1024 * 1024) catch |err| {
+        std.debug.print("\nFailed to read dev/tests.txt: {}\n", .{err});
         return err;
     };
     defer std.testing.allocator.free(content);
@@ -270,23 +270,39 @@ fn runGivenExpectTests(comptime file: []const u8, solveFn: fn ([]const u8, []u8)
 
     while (std.mem.indexOfPos(u8, content, pos, "Given:")) |given_idx| {
         pos = given_idx + "Given:".len;
-        const expect_idx = std.mem.indexOfPos(u8, content, pos, "Expect:") orelse break;
-        const input = std.mem.trim(u8, content[pos..expect_idx], " \n\r");
+        const expect_solution_idx = std.mem.indexOfPos(u8, content, pos, "Expect solution:") orelse break;
+        const input = std.mem.trim(u8, content[pos..expect_solution_idx], " \n\r");
 
-        pos = expect_idx + "Expect:".len;
+        pos = expect_solution_idx + "Expect solution:".len;
+        const expect_hint_idx = std.mem.indexOfPos(u8, content, pos, "Expect hint:") orelse break;
+        const expected_solution = std.mem.trim(u8, content[pos..expect_hint_idx], " \n\r");
+
+        pos = expect_hint_idx + "Expect hint:".len;
         const next_given = std.mem.indexOfPos(u8, content, pos, "Given:");
-        const expect_end = next_given orelse content.len;
-        const expected = std.mem.trim(u8, content[pos..expect_end], " \n\r");
+        const hint_end = next_given orelse content.len;
+        const expected_hint = std.mem.trim(u8, content[pos..hint_end], " \n\r");
 
-        pos = expect_end;
+        pos = hint_end;
 
-        const result = solveFn(input, &buf) orelse {
-            std.debug.print("\nFAIL: returned null for: {s}\n", .{input[0..@min(input.len, 40)]});
+        // Test solve
+        const solve_result = solver.solvePlayerProblem(input, &buf) orelse {
+            std.debug.print("\nFAIL solve: returned null for: {s}\n", .{input[0..@min(input.len, 40)]});
             return error.TestUnexpectedResult;
         };
 
-        std.testing.expectEqualStrings(expected, result) catch {
-            std.debug.print("\nFAIL: {s}\n", .{input[0..@min(input.len, 40)]});
+        std.testing.expectEqualStrings(expected_solution, solve_result) catch {
+            std.debug.print("\nFAIL solve: {s}\n", .{input[0..@min(input.len, 40)]});
+            return error.TestUnexpectedResult;
+        };
+
+        // Test hint
+        const hint_result = solver.hintPlayerProblem(input, &buf) orelse {
+            std.debug.print("\nFAIL hint: returned null for: {s}\n", .{input[0..@min(input.len, 40)]});
+            return error.TestUnexpectedResult;
+        };
+
+        std.testing.expectEqualStrings(expected_hint, hint_result) catch {
+            std.debug.print("\nFAIL hint: {s}\n", .{input[0..@min(input.len, 40)]});
             return error.TestUnexpectedResult;
         };
 
@@ -294,12 +310,4 @@ fn runGivenExpectTests(comptime file: []const u8, solveFn: fn ([]const u8, []u8)
     }
 
     try std.testing.expect(test_count > 0);
-}
-
-test "solve puzzles from tests_solve.txt" {
-    try runGivenExpectTests("dev/tests_solve.txt", solver.solvePlayerProblem);
-}
-
-test "hint puzzles from tests_hint.txt" {
-    try runGivenExpectTests("dev/tests_hint.txt", solver.hintPlayerProblem);
 }
