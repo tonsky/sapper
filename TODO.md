@@ -3,7 +3,6 @@
 - [ ] Puzzle type: [W] Wall: the clue indicates the lengths of consecutive mines in the neighboring 8 cells
 - [ ] Puzzle type: [O] Outside: all non-mines are orthogonally connected and all mines are orthogonally connected to the outside
 - [ ] Puzzle type: [N] Negation: the clue indicates the difference in the number of mines between adjacent colored and uncolored cells. [@c] Checkedboard coloring
-- [ ] Puzzle type: [D] Dual: all mines must form 1x2 or 2x1 blocks. Blocks do not touch each other
 - [ ] Puzzle type: [X] Cross: the clue indicates the number of mines in a cross region withing distance 2
 - [ ] Puzzle type: [S] Snake: all mines form a single snake whose body does not touch itself
 - [ ] Puzzle type: [D'] Battleship: all mines must for 1x1, 1x2, 1x3 or 1x4 blocks. Blocks do not touch each other (even diagonally)
@@ -18,6 +17,7 @@
 - [ ] Try highlighting cells instead of outline
 - [ ] New id button
 - [ ] Reset progress button
+- [x] Puzzle type: [D] Dual: all mines must form 1x2 or 2x1 blocks. Blocks do not touch each other
 - [x] Puzzle type: [T'] Triplet': Mines must be a part of row of three orthogonally or diagonally
 - [x] Change cursors when tools are active
 - [x] Show progress on main screen

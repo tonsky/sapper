@@ -142,15 +142,6 @@
               (navigate [:game (rand-nth just-lost)])
               (navigate [:game (rand-nth puzzles)]))))))))
 
-(defn puzzle-rules [id]
-  (cond
-    (str/starts-with? id "[V]")  #{:total :vanilla}
-    (str/starts-with? id "[Q]")  #{:total :vanilla :quad}
-    (str/starts-with? id "[C]")  #{:total :vanilla :connected}
-    (str/starts-with? id "[T]")  #{:total :vanilla :no-triplet}
-    (str/starts-with? id "[T']") #{:total :vanilla :triplet}
-    :else                        (throw (js/Error. "Unknown puzzle type"))))
-
 ;; Resources
 
 (defn load-resources [cb]

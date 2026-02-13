@@ -6,6 +6,7 @@ const quad = @import("rules/quad.zig");
 const no_triplet = @import("rules/no_triplet.zig");
 const triplet = @import("rules/triplet.zig");
 const connected = @import("rules/connected.zig");
+const dual = @import("rules/dual.zig");
 
 const FLAG = core.FLAG;
 const OPEN = core.OPEN;
@@ -188,6 +189,7 @@ fn checkConstraints(problem: *const core.Problem, support: *Support) bool {
     if (problem.rules.triplet and !triplet.check(problem, support)) return false;
     if (problem.rules.quad and !quad.check(problem, support)) return false;
     if (problem.rules.connected and !connected.check(problem, support)) return false;
+    if (problem.rules.dual and !dual.check(problem, support)) return false;
     if (problem.rules.vanilla and !vanilla.check(support)) return false;
     if (support.unknown_count == 0) return true;
     return diveDeeper(problem, support);
@@ -199,6 +201,13 @@ fn bestCandidate(problem: *const core.Problem, support: *const Support) ?usize {
 
     if (problem.rules.quad) {
         if (quad.bestCandidate(problem, support, &min_rating)) |idx| {
+            min_index = idx;
+            if (min_rating <= 1) return idx;
+        }
+    }
+
+    if (problem.rules.dual) {
+        if (dual.bestCandidate(problem, support, &min_rating)) |idx| {
             min_index = idx;
             if (min_rating <= 1) return idx;
         }

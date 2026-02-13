@@ -17,6 +17,7 @@ pub const Rules = packed struct {
     triplet: bool = false,
     quad: bool = false,
     connected: bool = false,
+    dual: bool = false,
 };
 
 pub const Problem = struct {

@@ -5,17 +5,19 @@
 (def progress)
 
 (def types
-  [[0 "Vanilla"     "[V]"]
-   [1 "Quad"        "[Q]"]
-   [2 "Connected"   "[C]"]
-   [3 "No triplets" "[T]"]
-   [4 "Triplets"    "[T']"]])
-
-(def sizes
-  [[0 "5×5" "5x5-10"]
-   [1 "6×6" "6x6-14"]
-   [2 "7×7" "7x7-20"]
-   [3 "8×8" "8x8-26"]])
+  (vec
+    (for [[row type-label type & flags]
+          [[0 "Vanilla"     "[V]"  10 14 20 26]
+           [1 "Quad"        "[Q]"  10 14 20 26]
+           [2 "Connected"   "[C]"  10 14 20 26]
+           [3 "No triplets" "[T]"  10 14 20 26]
+           [4 "Dual"        "[D]"   8 10 14 20]
+           [5 "Triplets"    "[T']" 10 14 20 26]]]
+      [row type-label type
+       (vec
+         (for [[col flags] (core/indexed flags)
+               :let [size (+ col 5)]]
+           [col (str size "×" size) (str size "x" size "-" flags)]))])))
 
 (def buttons-left 195)
 (def buttons-top 200)
@@ -35,8 +37,8 @@
     (vec
       (concat
         [{:l (- core/safe-w 60) :t 10 :w 50 :h 50 :icon "btn_settings.png" :on-click #(core/navigate [:settings])}]
-        (for [[row type-label type] types
-              [col size-label size] sizes]
+        (for [[row type-label type sizes] types
+              [col size-label size]       sizes]
           {:l        (+ buttons-left (* col (+ button-w button-gap-w)))
            :t        (+ buttons-top (* row (+ button-h button-gap-h)))
            :w        button-w
@@ -59,8 +61,8 @@
 
   ;; Progress
 
-  (doseq [[row type-label type] types
-          [col size-label size] sizes
+  (doseq [[row type-label type sizes] types
+          [col size-label size]       sizes
           :let [{:keys [solved total]} (get progress (str type size))]
           :when (pos? solved)
           :let [l  (+ buttons-left (* col (+ button-w button-gap-w)) button-w)
@@ -110,6 +112,6 @@
    :resources       (js/Set.
                       (concat
                         ["btn_settings.png"]
-                        (for [[_ _ type] types
-                              [_ _ size] sizes]
+                        (for [[_ _ type sizes] types
+                              [_ _ size]       sizes]
                           (str type size ".txt"))))})

@@ -32,8 +32,8 @@ fn cmdBenchOne(input: []const u8, iters: usize, stdout: anytype) !void {
 //     solver bench [--iters N]
 //
 fn cmdBenchAll(iters: usize, stdout: anytype) !void {
-    const content = std.fs.cwd().readFileAlloc(std.heap.page_allocator, "dev/tests_solve.txt", 1024 * 1024) catch |err| {
-        try stdout.print("Failed to read dev/tests_solve.txt: {}\n", .{err});
+    const content = std.fs.cwd().readFileAlloc(std.heap.page_allocator, "dev/tests.txt", 1024 * 1024) catch |err| {
+        try stdout.print("Failed to read dev/tests.txt: {}\n", .{err});
         return;
     };
     defer std.heap.page_allocator.free(content);
@@ -41,7 +41,7 @@ fn cmdBenchAll(iters: usize, stdout: anytype) !void {
     var pos: usize = 0;
     while (std.mem.indexOfPos(u8, content, pos, "Given:")) |given_idx| {
         pos = given_idx + "Given:".len;
-        const expect_idx = std.mem.indexOfPos(u8, content, pos, "Expect:") orelse break;
+        const expect_idx = std.mem.indexOfPos(u8, content, pos, "Expect") orelse break;
         const input = std.mem.trim(u8, content[pos..expect_idx], " \n\r");
         pos = expect_idx;
         try cmdBenchOne(input, iters, stdout);

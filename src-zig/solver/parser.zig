@@ -49,6 +49,8 @@ fn parseId(input: []const u8) ?struct { core.Problem, usize } {
             rules.quad = true;
         } else if (std.mem.eql(u8, rule, "C")) {
             rules.connected = true;
+        } else if (std.mem.eql(u8, rule, "D")) {
+            rules.dual = true;
         } else {
             return null; // unknown rule
         }
